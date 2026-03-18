@@ -11,6 +11,7 @@ const db = require('./db');
 const { authMiddleware, register, login } = require('./auth');
 const { generateContent, TEMPLATES } = require('./generate');
 const { PLANS, ensureStripePrices, createCheckoutSession, handleWebhook, getStripe } = require('./stripe-handler');
+const { generateBlogPost, pickUnusedKeyword, SEO_KEYWORDS } = require('./blog-generator');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -187,6 +188,402 @@ app.get('/api/admin/stats', authMiddleware, (req, res) => {
   }
 
   res.json({ totalUsers, paidUsers, totalGenerations, mrr: mrr.toFixed(2) });
+});
+
+// ===== BLOG API ROUTES =====
+
+// List all published blog posts (JSON API)
+app.get('/api/blog', (req, res) => {
+  const posts = db.prepare(
+    'SELECT id, title, slug, meta_description, keywords, created_at FROM blog_posts WHERE published = 1 ORDER BY created_at DESC'
+  ).all();
+  res.json({ posts });
+});
+
+// Schedule info endpoint (must be before :slug route)
+app.get('/api/blog/schedule-info', (req, res) => {
+  const totalPosts = db.prepare('SELECT COUNT(*) as count FROM blog_posts').get().count;
+  const lastPost = db.prepare('SELECT created_at FROM blog_posts ORDER BY created_at DESC LIMIT 1').get();
+  const usedKeywords = db.prepare('SELECT keywords FROM blog_posts').all().map(r => r.keywords).filter(Boolean);
+  const remainingKeywords = SEO_KEYWORDS.filter(kw => !usedKeywords.includes(kw));
+
+  // Suggest generating one post per day
+  let nextGenerationDate = new Date();
+  if (lastPost) {
+    const lastDate = new Date(lastPost.created_at);
+    nextGenerationDate = new Date(lastDate.getTime() + 24 * 60 * 60 * 1000);
+    if (nextGenerationDate < new Date()) {
+      nextGenerationDate = new Date(); // overdue, should generate now
+    }
+  }
+
+  res.json({
+    totalPosts,
+    totalKeywords: SEO_KEYWORDS.length,
+    remainingKeywords: remainingKeywords.length,
+    lastPostDate: lastPost?.created_at || null,
+    nextSuggestedGeneration: nextGenerationDate.toISOString(),
+    frequency: 'daily',
+    nextKeywordSuggestion: remainingKeywords.length > 0 ? remainingKeywords[0] : null,
+  });
+});
+
+// Get single blog post by slug (JSON API)
+app.get('/api/blog/:slug', (req, res) => {
+  const post = db.prepare(
+    'SELECT * FROM blog_posts WHERE slug = ? AND published = 1'
+  ).get(req.params.slug);
+  if (!post) return res.status(404).json({ error: 'Post not found' });
+  res.json({ post });
+});
+
+// Generate a blog post (admin only - user id 1)
+app.post('/api/blog/generate', authMiddleware, async (req, res) => {
+  if (req.user.id !== 1) return res.status(403).json({ error: 'Not authorized' });
+  try {
+    const keyword = req.body.keyword || null;
+    const result = await generateBlogPost(keyword);
+    res.json({ success: true, post: result });
+  } catch (err) {
+    console.error('Blog generation error:', err);
+    res.status(500).json({ error: 'Failed to generate blog post: ' + err.message });
+  }
+});
+
+// Auto-generate a blog post (can be called by cron, secured by secret)
+app.post('/api/blog/auto-generate', async (req, res) => {
+  // Allow access via admin auth OR a shared secret for cron jobs
+  const cronSecret = process.env.BLOG_CRON_SECRET;
+  const providedSecret = req.headers['x-cron-secret'] || req.body.secret;
+
+  if (cronSecret && providedSecret === cronSecret) {
+    // Authorized via cron secret
+  } else {
+    // Fall back to auth middleware check
+    const authHeader = req.headers.authorization;
+    const cookieToken = req.cookies?.token;
+    if (!authHeader && !cookieToken) {
+      return res.status(401).json({ error: 'Unauthorized. Provide x-cron-secret header or admin auth.' });
+    }
+    // Manual auth check
+    try {
+      const jwt = require('jsonwebtoken');
+      const token = authHeader?.replace('Bearer ', '') || cookieToken;
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
+      if (decoded.id !== 1) return res.status(403).json({ error: 'Admin only' });
+    } catch {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+  }
+
+  try {
+    const result = await generateBlogPost();
+    res.json({ success: true, post: result });
+  } catch (err) {
+    console.error('Auto blog generation error:', err);
+    res.status(500).json({ error: 'Failed to generate blog post: ' + err.message });
+  }
+});
+
+// ===== BLOG SERVER-RENDERED PAGES =====
+
+// Helper: render blog page HTML shell
+function renderBlogPage(title, metaDesc, canonical, ogType, bodyContent) {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(title)}</title>
+  <meta name="description" content="${escapeHtml(metaDesc)}">
+  <link rel="canonical" href="${canonical}">
+  <meta property="og:title" content="${escapeHtml(title)}">
+  <meta property="og:description" content="${escapeHtml(metaDesc)}">
+  <meta property="og:type" content="${ogType}">
+  <meta property="og:url" content="${canonical}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${escapeHtml(title)}">
+  <meta name="twitter:description" content="${escapeHtml(metaDesc)}">
+  <meta name="robots" content="index, follow">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #0a0a0f; --surface: #12121a; --border: #1e1e2e; --text: #e4e4e7;
+      --muted: #71717a; --primary: #6366f1; --primary-hover: #818cf8;
+      --success: #22c55e;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; }
+    a { color: var(--primary); text-decoration: none; }
+    a:hover { color: var(--primary-hover); }
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
+
+    nav { background: var(--surface); border-bottom: 1px solid var(--border); padding: 16px 0; position: sticky; top: 0; z-index: 100; }
+    nav .container { display: flex; justify-content: space-between; align-items: center; }
+    .logo { font-size: 20px; font-weight: 700; color: var(--text); }
+    .logo span { color: var(--primary); }
+    .nav-links { display: flex; gap: 16px; align-items: center; }
+    .nav-links a { color: var(--muted); font-size: 14px; }
+    .nav-links a:hover { color: var(--text); }
+    .btn { display: inline-block; padding: 10px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s; }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-sm { padding: 6px 16px; font-size: 13px; }
+
+    .blog-header { padding: 60px 0 30px; text-align: center; }
+    .blog-header h1 { font-size: 40px; font-weight: 800; margin-bottom: 12px; }
+    .blog-header h1 span { background: linear-gradient(135deg, var(--primary), #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .blog-header p { font-size: 18px; color: var(--muted); max-width: 600px; margin: 0 auto; }
+
+    .blog-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 24px; padding: 40px 0 60px; }
+    .blog-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 28px; transition: border-color 0.2s, transform 0.2s; }
+    .blog-card:hover { border-color: var(--primary); transform: translateY(-2px); }
+    .blog-card .card-date { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+    .blog-card h2 { font-size: 20px; font-weight: 700; margin-bottom: 10px; line-height: 1.3; }
+    .blog-card h2 a { color: var(--text); }
+    .blog-card h2 a:hover { color: var(--primary); }
+    .blog-card .card-excerpt { font-size: 14px; color: var(--muted); margin-bottom: 14px; line-height: 1.6; }
+    .blog-card .card-keyword { display: inline-block; font-size: 11px; background: var(--border); color: var(--muted); padding: 3px 10px; border-radius: 20px; }
+    .blog-card .read-more { font-size: 13px; font-weight: 600; color: var(--primary); }
+
+    .article-container { max-width: 760px; margin: 0 auto; padding: 40px 20px 60px; }
+    .article-meta { font-size: 13px; color: var(--muted); margin-bottom: 24px; }
+    .article-meta .keyword-tag { display: inline-block; background: var(--border); color: var(--muted); padding: 3px 10px; border-radius: 20px; font-size: 11px; margin-left: 8px; }
+    .article-content h2 { font-size: 26px; font-weight: 700; margin: 36px 0 16px; color: var(--text); }
+    .article-content h3 { font-size: 20px; font-weight: 600; margin: 28px 0 12px; color: var(--text); }
+    .article-content p { font-size: 16px; color: var(--text); margin-bottom: 18px; line-height: 1.8; }
+    .article-content ul, .article-content ol { margin: 0 0 18px 24px; }
+    .article-content li { font-size: 16px; color: var(--text); margin-bottom: 8px; line-height: 1.7; }
+    .article-content strong { color: #f4f4f5; }
+    .article-content blockquote { border-left: 3px solid var(--primary); padding: 12px 20px; margin: 20px 0; background: var(--surface); border-radius: 0 8px 8px 0; }
+    .article-content a { color: var(--primary); }
+
+    .cta-banner { background: var(--surface); border: 1px solid var(--primary); border-radius: 12px; padding: 40px; text-align: center; margin: 48px 0; }
+    .cta-banner h3 { font-size: 24px; font-weight: 700; margin-bottom: 12px; }
+    .cta-banner p { font-size: 16px; color: var(--muted); margin-bottom: 20px; max-width: 500px; margin-left: auto; margin-right: auto; }
+
+    .back-link { display: inline-block; margin-bottom: 24px; font-size: 14px; color: var(--muted); }
+    .back-link:hover { color: var(--primary); }
+
+    footer { padding: 40px 0; text-align: center; color: var(--muted); font-size: 13px; border-top: 1px solid var(--border); }
+    footer a { color: var(--muted); margin: 0 12px; }
+    footer a:hover { color: var(--primary); }
+
+    .no-posts { text-align: center; padding: 80px 20px; color: var(--muted); font-size: 18px; }
+
+    @media (max-width: 768px) {
+      .blog-header h1 { font-size: 28px; }
+      .blog-grid { grid-template-columns: 1fr; }
+      .article-content h2 { font-size: 22px; }
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a href="/" class="logo">Content<span>AI</span></a>
+      <div class="nav-links">
+        <a href="/blog">Blog</a>
+        <a href="/#features">Features</a>
+        <a href="/#pricing">Pricing</a>
+        <a href="/" class="btn btn-primary btn-sm">Get Started Free</a>
+      </div>
+    </div>
+  </nav>
+  ${bodyContent}
+  <footer>
+    <div class="container">
+      <p>ContentAI &mdash; AI-powered content generation for businesses</p>
+      <p style="margin-top:8px">
+        <a href="/">Home</a>
+        <a href="/blog">Blog</a>
+        <a href="/#features">Features</a>
+        <a href="/#pricing">Pricing</a>
+      </p>
+    </div>
+  </footer>
+</body>
+</html>`;
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function formatDate(dateStr) {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+function stripHtmlForExcerpt(html, maxLen) {
+  const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return text.length > maxLen ? text.substring(0, maxLen) + '...' : text;
+}
+
+// Blog listing page (server-rendered)
+app.get('/blog', (req, res) => {
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const posts = db.prepare(
+    'SELECT id, title, slug, content, meta_description, keywords, created_at FROM blog_posts WHERE published = 1 ORDER BY created_at DESC'
+  ).all();
+
+  let cardsHtml;
+  if (posts.length === 0) {
+    cardsHtml = '<div class="no-posts">No blog posts yet. Check back soon!</div>';
+  } else {
+    cardsHtml = `<div class="container"><div class="blog-grid">${posts.map(post => {
+      const excerpt = post.meta_description || stripHtmlForExcerpt(post.content, 160);
+      return `<div class="blog-card">
+        <div class="card-date">${formatDate(post.created_at)}</div>
+        <h2><a href="/blog/${escapeHtml(post.slug)}">${escapeHtml(post.title)}</a></h2>
+        <p class="card-excerpt">${escapeHtml(excerpt)}</p>
+        ${post.keywords ? `<span class="card-keyword">${escapeHtml(post.keywords)}</span>` : ''}
+        <div style="margin-top:14px"><a href="/blog/${escapeHtml(post.slug)}" class="read-more">Read article &rarr;</a></div>
+      </div>`;
+    }).join('')}</div></div>`;
+  }
+
+  const body = `
+    <div class="blog-header">
+      <div class="container">
+        <h1>The Content<span>AI</span> Blog</h1>
+        <p>Tips, strategies, and insights on AI-powered content creation, copywriting, and digital marketing.</p>
+      </div>
+    </div>
+    ${cardsHtml}
+  `;
+
+  const html = renderBlogPage(
+    'Blog - ContentAI | AI Content Generation Tips & Strategies',
+    'Expert tips on AI content generation, copywriting, product descriptions, marketing emails, and SEO. Learn how to create better content faster.',
+    `${baseUrl}/blog`,
+    'website',
+    body
+  );
+
+  res.send(html);
+});
+
+// Single blog post page (server-rendered)
+app.get('/blog/:slug', (req, res) => {
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const post = db.prepare(
+    'SELECT * FROM blog_posts WHERE slug = ? AND published = 1'
+  ).get(req.params.slug);
+
+  if (!post) {
+    const notFoundBody = `
+      <div class="article-container" style="text-align:center;padding:80px 20px">
+        <h2 style="font-size:32px;margin-bottom:16px">Post Not Found</h2>
+        <p style="color:var(--muted);margin-bottom:24px">The article you are looking for does not exist or has been removed.</p>
+        <a href="/blog" class="btn btn-primary">Browse All Articles</a>
+      </div>
+    `;
+    return res.status(404).send(renderBlogPage(
+      'Post Not Found - ContentAI Blog',
+      'This blog post could not be found.',
+      `${baseUrl}/blog`,
+      'website',
+      notFoundBody
+    ));
+  }
+
+  // Build structured data (JSON-LD)
+  const jsonLd = JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'BlogPosting',
+    headline: post.title,
+    description: post.meta_description || '',
+    datePublished: post.created_at,
+    author: { '@type': 'Organization', name: 'ContentAI' },
+    publisher: { '@type': 'Organization', name: 'ContentAI' },
+    mainEntityOfPage: { '@type': 'WebPage', '@id': `${baseUrl}/blog/${post.slug}` },
+  });
+
+  const body = `
+    <script type="application/ld+json">${jsonLd}</script>
+    <div class="article-container">
+      <a href="/blog" class="back-link">&larr; Back to all articles</a>
+      <h1 style="font-size:36px;font-weight:800;margin-bottom:8px;line-height:1.2">${escapeHtml(post.title)}</h1>
+      <div class="article-meta">
+        ${formatDate(post.created_at)}
+        ${post.keywords ? `<span class="keyword-tag">${escapeHtml(post.keywords)}</span>` : ''}
+      </div>
+      <div class="article-content">
+        ${post.content}
+      </div>
+
+      <div class="cta-banner">
+        <h3>Generate Content Like This in Seconds</h3>
+        <p>ContentAI helps small businesses create professional marketing content with AI. Product descriptions, emails, social posts, and more.</p>
+        <a href="/" class="btn btn-primary">Start Free &mdash; 5 Generations</a>
+      </div>
+
+      <div style="margin-top:32px;padding-top:24px;border-top:1px solid var(--border)">
+        <p style="font-size:14px;color:var(--muted);margin-bottom:12px">More from the ContentAI blog:</p>
+        <a href="/blog" style="font-size:14px">Browse all articles &rarr;</a>
+      </div>
+    </div>
+  `;
+
+  const html = renderBlogPage(
+    `${post.title} - ContentAI Blog`,
+    post.meta_description || stripHtmlForExcerpt(post.content, 155),
+    `${baseUrl}/blog/${post.slug}`,
+    'article',
+    body
+  );
+
+  res.send(html);
+});
+
+// ===== SITEMAP =====
+app.get('/sitemap.xml', (req, res) => {
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const posts = db.prepare(
+    'SELECT slug, created_at FROM blog_posts WHERE published = 1 ORDER BY created_at DESC'
+  ).all();
+
+  let xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>${baseUrl}/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>${baseUrl}/blog</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+`;
+
+  for (const post of posts) {
+    const lastmod = new Date(post.created_at).toISOString().split('T')[0];
+    xml += `  <url>
+    <loc>${baseUrl}/blog/${post.slug}</loc>
+    <lastmod>${lastmod}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+`;
+  }
+
+  xml += '</urlset>';
+
+  res.set('Content-Type', 'application/xml');
+  res.send(xml);
+});
+
+// Robots.txt
+app.get('/robots.txt', (req, res) => {
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  res.set('Content-Type', 'text/plain');
+  res.send(`User-agent: *
+Allow: /
+Allow: /blog
+Sitemap: ${baseUrl}/sitemap.xml
+`);
 });
 
 // SPA fallback
