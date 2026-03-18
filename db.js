@@ -18,6 +18,9 @@ db.exec(`
     stripe_subscription_id TEXT,
     generations_used INTEGER DEFAULT 0,
     generations_limit INTEGER DEFAULT 5,
+    referral_code TEXT UNIQUE,
+    referred_by INTEGER,
+    bonus_generations INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -50,6 +53,27 @@ db.exec(`
     published INTEGER DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS email_subscribers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT UNIQUE NOT NULL,
+    name TEXT,
+    subscribed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_email_sent DATETIME,
+    emails_sent_count INTEGER DEFAULT 0,
+    converted INTEGER DEFAULT 0
+  );
 `);
+
+// Migration: add referral columns if they don't exist (for existing databases)
+try {
+  db.exec(`ALTER TABLE users ADD COLUMN referral_code TEXT UNIQUE`);
+} catch (e) { /* column already exists */ }
+try {
+  db.exec(`ALTER TABLE users ADD COLUMN referred_by INTEGER`);
+} catch (e) { /* column already exists */ }
+try {
+  db.exec(`ALTER TABLE users ADD COLUMN bonus_generations INTEGER DEFAULT 0`);
+} catch (e) { /* column already exists */ }
 
 module.exports = db;

@@ -12,6 +12,8 @@ const { authMiddleware, register, login } = require('./auth');
 const { generateContent, TEMPLATES } = require('./generate');
 const { PLANS, ensureStripePrices, createCheckoutSession, handleWebhook, getStripe } = require('./stripe-handler');
 const { generateBlogPost, pickUnusedKeyword, SEO_KEYWORDS } = require('./blog-generator');
+const { sendDripEmails } = require('./email-drip');
+const { registerFreeToolRoutes, FREE_TOOLS } = require('./free-tools');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -45,11 +47,11 @@ app.use('/api/', apiLimiter);
 // ===== AUTH ROUTES =====
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { email, password, name } = req.body;
+    const { email, password, name, referral_code } = req.body;
     if (!email || !password || !name) return res.status(400).json({ error: 'Email, password, and name required' });
     if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
 
-    const result = await register(email, password, name);
+    const result = await register(email, password, name, referral_code || null);
     res.cookie('token', result.token, { httpOnly: true, maxAge: 30 * 24 * 60 * 60 * 1000 });
     res.json(result);
   } catch (err) {
@@ -88,21 +90,28 @@ app.post('/api/generate', authMiddleware, async (req, res) => {
     const { type, input } = req.body;
     if (!type || !input) return res.status(400).json({ error: 'Type and input required' });
 
-    // Check usage limits
-    const user = db.prepare('SELECT generations_used, generations_limit FROM users WHERE id = ?').get(req.user.id);
-    if (user.generations_used >= user.generations_limit) {
+    // Check usage limits (bonus generations are used before monthly limit)
+    const user = db.prepare('SELECT generations_used, generations_limit, bonus_generations FROM users WHERE id = ?').get(req.user.id);
+    const totalAvailable = user.generations_limit + user.bonus_generations;
+    if (user.generations_used >= totalAvailable) {
       return res.status(403).json({ error: 'Generation limit reached. Please upgrade your plan.', needsUpgrade: true });
     }
 
     const result = await generateContent(type, input);
 
-    // Save to DB and increment usage
+    // Save to DB and decrement: use bonus_generations first, then count against monthly limit
     db.prepare('INSERT INTO generations (user_id, type, prompt, result) VALUES (?, ?, ?, ?)')
       .run(req.user.id, type, JSON.stringify(input), result.content);
-    db.prepare('UPDATE users SET generations_used = generations_used + 1 WHERE id = ?').run(req.user.id);
 
-    const updated = db.prepare('SELECT generations_used, generations_limit FROM users WHERE id = ?').get(req.user.id);
-    res.json({ ...result, remaining: updated.generations_limit - updated.generations_used });
+    if (user.bonus_generations > 0) {
+      db.prepare('UPDATE users SET bonus_generations = bonus_generations - 1 WHERE id = ?').run(req.user.id);
+    } else {
+      db.prepare('UPDATE users SET generations_used = generations_used + 1 WHERE id = ?').run(req.user.id);
+    }
+
+    const updated = db.prepare('SELECT generations_used, generations_limit, bonus_generations FROM users WHERE id = ?').get(req.user.id);
+    const remaining = (updated.generations_limit - updated.generations_used) + updated.bonus_generations;
+    res.json({ ...result, remaining });
   } catch (err) {
     console.error('Generation error:', err);
     res.status(500).json({ error: 'Failed to generate content. Check your API key.' });
@@ -129,6 +138,36 @@ app.get('/api/keys', authMiddleware, (req, res) => {
   res.json({ keys });
 });
 
+// ===== REFERRAL ROUTES =====
+app.get('/api/referral', authMiddleware, (req, res) => {
+  const user = db.prepare('SELECT referral_code, bonus_generations FROM users WHERE id = ?').get(req.user.id);
+  const referralCount = db.prepare('SELECT COUNT(*) as count FROM users WHERE referred_by = ?').get(req.user.id).count;
+  res.json({
+    referral_code: user.referral_code,
+    referral_count: referralCount,
+    bonus_generations: user.bonus_generations,
+  });
+});
+
+app.post('/api/referral/apply', authMiddleware, (req, res) => {
+  const { referral_code } = req.body;
+  if (!referral_code) return res.status(400).json({ error: 'Referral code required' });
+
+  // Check if user was already referred
+  const user = db.prepare('SELECT id, referred_by FROM users WHERE id = ?').get(req.user.id);
+  if (user.referred_by) return res.status(400).json({ error: 'You have already used a referral code' });
+
+  const referrer = db.prepare('SELECT id FROM users WHERE referral_code = ?').get(referral_code);
+  if (!referrer) return res.status(400).json({ error: 'Invalid referral code' });
+  if (referrer.id === req.user.id) return res.status(400).json({ error: 'You cannot refer yourself' });
+
+  // Credit both users with 5 bonus generations
+  db.prepare('UPDATE users SET referred_by = ?, bonus_generations = bonus_generations + 5 WHERE id = ?').run(referrer.id, req.user.id);
+  db.prepare('UPDATE users SET bonus_generations = bonus_generations + 5 WHERE id = ?').run(referrer.id);
+
+  res.json({ success: true, message: 'Referral applied! You both earned 5 bonus generations.' });
+});
+
 // ===== EXTERNAL API (for customers' API keys) =====
 app.post('/api/v1/generate', async (req, res) => {
   const apiKey = req.headers['x-api-key'];
@@ -138,7 +177,8 @@ app.post('/api/v1/generate', async (req, res) => {
   if (!keyRow) return res.status(401).json({ error: 'Invalid API key' });
 
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(keyRow.user_id);
-  if (user.generations_used >= user.generations_limit) {
+  const totalAvailable = user.generations_limit + (user.bonus_generations || 0);
+  if (user.generations_used >= totalAvailable) {
     return res.status(403).json({ error: 'Generation limit reached' });
   }
 
@@ -147,7 +187,11 @@ app.post('/api/v1/generate', async (req, res) => {
     const result = await generateContent(type, input);
     db.prepare('INSERT INTO generations (user_id, type, prompt, result) VALUES (?, ?, ?, ?)')
       .run(user.id, type, JSON.stringify(input), result.content);
-    db.prepare('UPDATE users SET generations_used = generations_used + 1 WHERE id = ?').run(user.id);
+    if (user.bonus_generations > 0) {
+      db.prepare('UPDATE users SET bonus_generations = bonus_generations - 1 WHERE id = ?').run(user.id);
+    } else {
+      db.prepare('UPDATE users SET generations_used = generations_used + 1 WHERE id = ?').run(user.id);
+    }
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: 'Generation failed' });
@@ -172,6 +216,26 @@ app.post('/api/checkout', authMiddleware, async (req, res) => {
   }
 });
 
+// ===== PUBLIC STATS (for social proof) =====
+let statsCache = null;
+let statsCacheTime = 0;
+const STATS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+app.get('/api/stats', (req, res) => {
+  const now = Date.now();
+  if (statsCache && (now - statsCacheTime) < STATS_CACHE_TTL) {
+    return res.json(statsCache);
+  }
+
+  const totalUsers = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
+  const totalGenerations = db.prepare('SELECT COUNT(*) as count FROM generations').get().count;
+  const totalBlogPosts = db.prepare('SELECT COUNT(*) as count FROM blog_posts WHERE published = 1').get().count;
+
+  statsCache = { totalUsers, totalGenerations, totalBlogPosts };
+  statsCacheTime = now;
+  res.json(statsCache);
+});
+
 // ===== ADMIN STATS =====
 app.get('/api/admin/stats', authMiddleware, (req, res) => {
   // Simple admin check — first user is admin
@@ -188,6 +252,68 @@ app.get('/api/admin/stats', authMiddleware, (req, res) => {
   }
 
   res.json({ totalUsers, paidUsers, totalGenerations, mrr: mrr.toFixed(2) });
+});
+
+// ===== EMAIL SUBSCRIBER ROUTES =====
+
+// Subscribe — public endpoint for email capture
+app.post('/api/subscribe', (req, res) => {
+  const { email, name } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email is required' });
+
+  // Validate email format
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) return res.status(400).json({ error: 'Invalid email format' });
+
+  // Check for duplicate
+  const existing = db.prepare('SELECT id FROM email_subscribers WHERE email = ?').get(email.toLowerCase().trim());
+  if (existing) return res.json({ ok: true, message: 'You are already subscribed!' });
+
+  db.prepare('INSERT INTO email_subscribers (email, name) VALUES (?, ?)').run(email.toLowerCase().trim(), name || null);
+  res.json({ ok: true, message: 'Successfully subscribed!' });
+});
+
+// List subscribers — admin only (user id 1)
+app.get('/api/subscribers', authMiddleware, (req, res) => {
+  if (req.user.id !== 1) return res.status(403).json({ error: 'Not authorized' });
+
+  const subscribers = db.prepare(
+    'SELECT id, email, name, subscribed_at, last_email_sent, emails_sent_count, converted FROM email_subscribers ORDER BY subscribed_at DESC'
+  ).all();
+  res.json({ subscribers, total: subscribers.length });
+});
+
+// Send drip emails — admin or cron
+app.post('/api/email/send-drip', async (req, res) => {
+  const cronSecret = process.env.BLOG_CRON_SECRET;
+  const providedSecret = req.headers['x-cron-secret'] || req.body.secret;
+
+  if (cronSecret && providedSecret === cronSecret) {
+    // Authorized via cron secret
+  } else {
+    // Fall back to auth middleware check
+    const authHeader = req.headers.authorization;
+    const cookieToken = req.cookies?.token;
+    if (!authHeader && !cookieToken) {
+      return res.status(401).json({ error: 'Unauthorized. Provide x-cron-secret header or admin auth.' });
+    }
+    try {
+      const jwt = require('jsonwebtoken');
+      const token = authHeader?.replace('Bearer ', '') || cookieToken;
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
+      if (decoded.id !== 1) return res.status(403).json({ error: 'Admin only' });
+    } catch {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+  }
+
+  try {
+    const result = await sendDripEmails();
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('Drip email error:', err);
+    res.status(500).json({ error: 'Failed to send drip emails: ' + err.message });
+  }
 });
 
 // ===== BLOG API ROUTES =====
@@ -399,6 +525,12 @@ function renderBlogPage(title, metaDesc, canonical, ogType, bodyContent) {
         <a href="/#features">Features</a>
         <a href="/#pricing">Pricing</a>
       </p>
+      <p style="margin-top:10px;font-size:12px">
+        <a href="/free/product-description-generator">Free Product Descriptions</a>
+        <a href="/free/email-writer">Free Email Writer</a>
+        <a href="/free/social-media-post-generator">Free Social Posts</a>
+        <a href="/free/ad-copy-generator">Free Ad Copy</a>
+      </p>
     </div>
   </footer>
 </body>
@@ -520,6 +652,13 @@ app.get('/blog/:slug', (req, res) => {
       </div>
 
       <div style="margin-top:32px;padding-top:24px;border-top:1px solid var(--border)">
+        <p style="font-size:14px;color:var(--muted);margin-bottom:12px">Try our free AI tools — no signup required:</p>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px">
+          <a href="/free/product-description-generator" style="font-size:13px;padding:6px 14px;background:var(--surface);border:1px solid var(--border);border-radius:6px">Product Descriptions</a>
+          <a href="/free/email-writer" style="font-size:13px;padding:6px 14px;background:var(--surface);border:1px solid var(--border);border-radius:6px">Email Writer</a>
+          <a href="/free/social-media-post-generator" style="font-size:13px;padding:6px 14px;background:var(--surface);border:1px solid var(--border);border-radius:6px">Social Media Posts</a>
+          <a href="/free/ad-copy-generator" style="font-size:13px;padding:6px 14px;background:var(--surface);border:1px solid var(--border);border-radius:6px">Ad Copy</a>
+        </div>
         <p style="font-size:14px;color:var(--muted);margin-bottom:12px">More from the ContentAI blog:</p>
         <a href="/blog" style="font-size:14px">Browse all articles &rarr;</a>
       </div>
@@ -536,6 +675,9 @@ app.get('/blog/:slug', (req, res) => {
 
   res.send(html);
 });
+
+// ===== FREE TOOL PAGES =====
+registerFreeToolRoutes(app);
 
 // ===== SITEMAP =====
 app.get('/sitemap.xml', (req, res) => {
@@ -557,6 +699,16 @@ app.get('/sitemap.xml', (req, res) => {
     <priority>0.8</priority>
   </url>
 `;
+
+  // Free tool pages
+  for (const slug of Object.keys(FREE_TOOLS)) {
+    xml += `  <url>
+    <loc>${baseUrl}/free/${slug}</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+`;
+  }
 
   for (const post of posts) {
     const lastmod = new Date(post.created_at).toISOString().split('T')[0];
@@ -582,6 +734,7 @@ app.get('/robots.txt', (req, res) => {
   res.send(`User-agent: *
 Allow: /
 Allow: /blog
+Allow: /free/
 Sitemap: ${baseUrl}/sitemap.xml
 `);
 });

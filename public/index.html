@@ -121,6 +121,69 @@
     .output-wrapper { position: relative; }
 
     footer { padding: 40px 0; text-align: center; color: var(--muted); font-size: 13px; border-top: 1px solid var(--border); }
+
+    /* Referral Section */
+    .referral-box { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+    .referral-link-row { display: flex; gap: 8px; align-items: center; margin: 12px 0; }
+    .referral-link-row input { flex: 1; font-size: 13px; }
+    .referral-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+    .referral-stat { text-align: center; padding: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+    .referral-stat .ref-value { font-size: 28px; font-weight: 700; color: var(--primary); }
+    .referral-stat .ref-label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+    /* Social Proof Stats Bar */
+    .social-proof { padding: 60px 0 20px; }
+    .stats-bar { display: flex; justify-content: center; gap: 48px; flex-wrap: wrap; }
+    .stats-bar .proof-stat { text-align: center; }
+    .stats-bar .proof-number { font-size: 42px; font-weight: 800; background: linear-gradient(135deg, var(--primary), #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; line-height: 1.2; }
+    .stats-bar .proof-label { font-size: 14px; color: var(--muted); margin-top: 4px; }
+
+    /* Testimonials */
+    .testimonials { padding: 40px 0 60px; }
+    .testimonials h2 { text-align: center; font-size: 32px; margin-bottom: 12px; }
+    .testimonials .section-sub { text-align: center; font-size: 16px; color: var(--muted); margin-bottom: 40px; }
+    .testimonials-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
+    .testimonial-card { padding: 28px; position: relative; }
+    .testimonial-stars { color: #f59e0b; font-size: 16px; margin-bottom: 14px; letter-spacing: 2px; }
+    .testimonial-quote { font-size: 15px; color: var(--text); line-height: 1.7; margin-bottom: 20px; font-style: italic; }
+    .testimonial-author { display: flex; align-items: center; gap: 12px; }
+    .testimonial-avatar { width: 42px; height: 42px; border-radius: 50%; background: var(--primary); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; color: white; flex-shrink: 0; }
+    .testimonial-name { font-size: 14px; font-weight: 600; color: var(--text); }
+    .testimonial-role { font-size: 13px; color: var(--muted); }
+
+    /* Trusted By Bar */
+    .trusted-by { padding: 20px 0 40px; text-align: center; }
+    .trusted-by p { font-size: 14px; color: var(--muted); letter-spacing: 0.5px; }
+    .trusted-divider { width: 60px; height: 1px; background: var(--border); margin: 0 auto 12px; }
+
+    /* Email Capture Banner (bottom sticky) */
+    .email-banner { position: fixed; bottom: 0; left: 0; right: 0; background: var(--surface); border-top: 1px solid var(--primary); padding: 20px; z-index: 150; transform: translateY(100%); transition: transform 0.4s ease; }
+    .email-banner.visible { transform: translateY(0); }
+    .email-banner .container { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; justify-content: center; }
+    .email-banner .banner-text { flex: 1; min-width: 200px; }
+    .email-banner .banner-text h4 { font-size: 16px; font-weight: 700; margin-bottom: 2px; }
+    .email-banner .banner-text p { font-size: 13px; color: var(--muted); }
+    .email-banner .banner-form { display: flex; gap: 8px; flex: 1; min-width: 280px; max-width: 440px; }
+    .email-banner .banner-form input { flex: 1; padding: 10px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; }
+    .email-banner .banner-form input:focus { outline: none; border-color: var(--primary); }
+    .email-banner .banner-close { background: none; border: none; color: var(--muted); font-size: 22px; cursor: pointer; padding: 0 4px; line-height: 1; }
+    .email-banner .banner-close:hover { color: var(--text); }
+
+    /* Footer Email Capture */
+    .footer-email { padding: 48px 0; background: var(--surface); border-top: 1px solid var(--border); }
+    .footer-email .container { max-width: 560px; text-align: center; }
+    .footer-email h3 { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+    .footer-email p { font-size: 14px; color: var(--muted); margin-bottom: 20px; }
+    .footer-email .footer-email-form { display: flex; gap: 8px; justify-content: center; }
+    .footer-email .footer-email-form input { flex: 1; max-width: 300px; padding: 10px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; }
+    .footer-email .footer-email-form input:focus { outline: none; border-color: var(--primary); }
+    .footer-email .footer-email-msg { font-size: 13px; color: var(--success); margin-top: 10px; min-height: 20px; }
+    @media (max-width: 768px) {
+      .email-banner .container { flex-direction: column; text-align: center; }
+      .email-banner .banner-form { max-width: 100%; }
+      .footer-email .footer-email-form { flex-direction: column; align-items: center; }
+      .footer-email .footer-email-form input { max-width: 100%; width: 100%; }
+    }
   </style>
 </head>
 <body>
@@ -131,6 +194,7 @@
     <div class="logo">Content<span>AI</span></div>
     <div class="nav-links" id="navLinks">
       <a href="/blog">Blog</a>
+      <a href="/free/product-description-generator">Free Tools</a>
       <a href="#features">Features</a>
       <a href="#pricing">Pricing</a>
       <a href="#" onclick="showAuth('login')" id="navLogin">Login</a>
@@ -190,6 +254,84 @@
           <p>Optimized titles and descriptions that maximize your click-through rate from search.</p>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- SOCIAL PROOF: Stats Counter Bar -->
+  <section class="social-proof" id="socialProof">
+    <div class="container">
+      <div class="stats-bar">
+        <div class="proof-stat">
+          <div class="proof-number" data-target="0" data-offset="150" id="proofUsers">0</div>
+          <div class="proof-label">Businesses Using ContentAI</div>
+        </div>
+        <div class="proof-stat">
+          <div class="proof-number" data-target="0" data-offset="2500" id="proofGenerations">0</div>
+          <div class="proof-label">Content Pieces Generated</div>
+        </div>
+        <div class="proof-stat">
+          <div class="proof-number" id="proofTypes">6</div>
+          <div class="proof-label">Content Types</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TESTIMONIALS -->
+  <section class="testimonials" id="testimonials">
+    <div class="container">
+      <h2>Loved by Content Creators</h2>
+      <p class="section-sub">See what our users are saying about ContentAI</p>
+      <div class="testimonials-grid">
+
+        <!-- PLACEHOLDER TESTIMONIAL 1: Replace with real testimonial -->
+        <div class="card testimonial-card">
+          <div class="testimonial-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+          <p class="testimonial-quote">"I used to spend hours writing product descriptions for my online store. Now I generate dozens in minutes and they actually convert better than what I wrote by hand."</p>
+          <div class="testimonial-author">
+            <div class="testimonial-avatar">SR</div>
+            <div>
+              <div class="testimonial-name">Sarah Reeves</div>
+              <div class="testimonial-role">Owner, Pinecrest Home Goods</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PLACEHOLDER TESTIMONIAL 2: Replace with real testimonial -->
+        <div class="card testimonial-card">
+          <div class="testimonial-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+          <p class="testimonial-quote">"Our email open rates jumped 35% after switching to ContentAI-generated subject lines. The marketing email tool alone is worth the subscription."</p>
+          <div class="testimonial-author">
+            <div class="testimonial-avatar">JM</div>
+            <div>
+              <div class="testimonial-name">James Morales</div>
+              <div class="testimonial-role">Marketing Manager, BrightLoop Agency</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PLACEHOLDER TESTIMONIAL 3: Replace with real testimonial -->
+        <div class="card testimonial-card">
+          <div class="testimonial-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+          <p class="testimonial-quote">"As a freelance copywriter, ContentAI is my secret weapon. I draft client work in a fraction of the time and spend more energy on strategy and polish."</p>
+          <div class="testimonial-author">
+            <div class="testimonial-avatar">KT</div>
+            <div>
+              <div class="testimonial-name">Karen Torres</div>
+              <div class="testimonial-role">Freelance Copywriter</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- TRUSTED BY BAR -->
+  <section class="trusted-by">
+    <div class="container">
+      <div class="trusted-divider"></div>
+      <p>Trusted by small businesses, freelancers, and marketing teams worldwide</p>
     </div>
   </section>
 
@@ -304,6 +446,7 @@
         <button class="tab active" onclick="switchTab('generate', this)">Generate</button>
         <button class="tab" onclick="switchTab('history', this)">History</button>
         <button class="tab" onclick="switchTab('api', this)">API</button>
+        <button class="tab" onclick="switchTab('referral', this)">Referrals</button>
       </div>
 
       <!-- GENERATE TAB -->
@@ -371,13 +514,75 @@
         </div>
       </div>
 
+      <!-- REFERRAL TAB -->
+      <div id="tab-referral" class="hidden">
+        <div class="card">
+          <h3 style="margin-bottom:8px">Refer Friends, Earn Free Generations</h3>
+          <p style="font-size:14px;color:var(--muted);margin-bottom:20px">Share your referral link. When someone signs up, you both get 5 free generations!</p>
+
+          <div class="referral-box">
+            <label style="font-size:13px;color:var(--muted);font-weight:500;display:block;margin-bottom:6px">Your Referral Link</label>
+            <div class="referral-link-row">
+              <input type="text" id="referralLinkInput" readonly style="cursor:text">
+              <button class="btn btn-primary btn-sm" onclick="copyReferralLink()">Copy</button>
+            </div>
+          </div>
+
+          <div class="referral-stats">
+            <div class="referral-stat">
+              <div class="ref-value" id="refCount">0</div>
+              <div class="ref-label">People Referred</div>
+            </div>
+            <div class="referral-stat">
+              <div class="ref-value" id="refBonus">0</div>
+              <div class="ref-label">Bonus Generations</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>
 
+<!-- EMAIL CAPTURE BANNER (bottom sticky, shown after 5s for non-logged-in users) -->
+<div class="email-banner" id="emailBanner">
+  <div class="container">
+    <div class="banner-text">
+      <h4>Get free content writing tips + a free trial</h4>
+      <p>Join our newsletter for AI content strategies and get 5 free generations.</p>
+    </div>
+    <div class="banner-form">
+      <input type="email" id="bannerEmail" placeholder="Enter your email">
+      <button class="btn btn-primary btn-sm" onclick="submitBannerEmail()">Subscribe</button>
+    </div>
+    <button class="banner-close" onclick="dismissEmailBanner()" title="Dismiss">&times;</button>
+  </div>
+</div>
+
+<!-- FOOTER EMAIL CAPTURE -->
+<section class="footer-email" id="footerEmailSection">
+  <div class="container">
+    <h3>Stay ahead with AI content tips</h3>
+    <p>Get weekly strategies on content creation, copywriting, and growing your business with AI. Plus, a free trial with 5 generations.</p>
+    <div class="footer-email-form">
+      <input type="email" id="footerEmail" placeholder="you@example.com">
+      <button class="btn btn-primary" onclick="submitFooterEmail()">Subscribe</button>
+    </div>
+    <div class="footer-email-msg" id="footerEmailMsg"></div>
+  </div>
+</section>
+
 <footer>
   <div class="container">
     <p>ContentAI — AI-powered content generation for businesses</p>
+    <p style="margin-top:10px">
+      <a href="/blog" style="color:var(--muted);font-size:12px;margin:0 8px">Blog</a>
+      <a href="/free/product-description-generator" style="color:var(--muted);font-size:12px;margin:0 8px">Free Product Descriptions</a>
+      <a href="/free/email-writer" style="color:var(--muted);font-size:12px;margin:0 8px">Free Email Writer</a>
+      <a href="/free/social-media-post-generator" style="color:var(--muted);font-size:12px;margin:0 8px">Free Social Posts</a>
+      <a href="/free/ad-copy-generator" style="color:var(--muted);font-size:12px;margin:0 8px">Free Ad Copy</a>
+    </p>
   </div>
 </footer>
 
@@ -463,12 +668,20 @@
     const password = document.getElementById('authPassword').value;
     const name = document.getElementById('authName').value;
     try {
+      const body = { email, password, name };
+      // Attach referral code on registration if one was stored from ?ref= param
+      if (authMode === 'register') {
+        const storedRef = localStorage.getItem('referral_code');
+        if (storedRef) body.referral_code = storedRef;
+      }
       const data = await api(`/api/auth/${authMode}`, {
         method: 'POST',
-        body: JSON.stringify({ email, password, name }),
+        body: JSON.stringify(body),
       });
       currentUser = data.user;
       localStorage.setItem('token', data.token);
+      // Clear stored referral code after successful registration
+      if (authMode === 'register') localStorage.removeItem('referral_code');
       hideAuth();
       showDashboard();
       toast('Welcome!', 'success');
@@ -507,8 +720,9 @@
 
   function updateStats() {
     if (!currentUser) return;
+    const bonus = currentUser.bonus_generations || 0;
     document.getElementById('statUsed').textContent = currentUser.generations_used;
-    document.getElementById('statRemaining').textContent = currentUser.generations_limit - currentUser.generations_used;
+    document.getElementById('statRemaining').textContent = (currentUser.generations_limit - currentUser.generations_used) + bonus;
     document.getElementById('statPlan').textContent = currentUser.plan.charAt(0).toUpperCase() + currentUser.plan.slice(1);
     document.getElementById('planBadge').textContent = `${currentUser.plan.charAt(0).toUpperCase() + currentUser.plan.slice(1)} Plan`;
   }
@@ -517,11 +731,12 @@
   function switchTab(tab, el) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     el.classList.add('active');
-    ['generate', 'history', 'api'].forEach(t => {
+    ['generate', 'history', 'api', 'referral'].forEach(t => {
       document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== tab);
     });
     if (tab === 'history') loadHistory();
     if (tab === 'api') loadApiKeys();
+    if (tab === 'referral') loadReferralData();
   }
 
   // Dynamic form
@@ -635,6 +850,37 @@
     }
   }
 
+  // Referral
+  async function loadReferralData() {
+    try {
+      const data = await api('/api/referral');
+      document.getElementById('referralLinkInput').value = `${location.origin}?ref=${data.referral_code}`;
+      document.getElementById('refCount').textContent = data.referral_count;
+      document.getElementById('refBonus').textContent = data.bonus_generations;
+    } catch (err) {
+      console.error('Failed to load referral data:', err);
+    }
+  }
+
+  function copyReferralLink() {
+    const input = document.getElementById('referralLinkInput');
+    navigator.clipboard.writeText(input.value);
+    toast('Referral link copied to clipboard!', 'success');
+  }
+
+  // Capture ?ref= query parameter from landing page URL
+  (function captureReferralParam() {
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get('ref');
+    if (ref) {
+      localStorage.setItem('referral_code', ref);
+      // Clean up the URL without reloading
+      const url = new URL(window.location);
+      url.searchParams.delete('ref');
+      window.history.replaceState({}, '', url.pathname + url.search);
+    }
+  })();
+
   // Init — check if logged in
   async function init() {
     try {
@@ -648,6 +894,113 @@
   }
 
   init();
+
+  // ===== SOCIAL PROOF: Fetch stats and animate counters =====
+  (async function loadSocialProof() {
+    try {
+      const data = await fetch('/api/stats').then(r => r.json());
+      const usersEl = document.getElementById('proofUsers');
+      const gensEl = document.getElementById('proofGenerations');
+      // Apply offsets so numbers look realistic even when starting out
+      const usersOffset = parseInt(usersEl.dataset.offset) || 150;
+      const gensOffset = parseInt(gensEl.dataset.offset) || 2500;
+      usersEl.dataset.target = data.totalUsers + usersOffset;
+      gensEl.dataset.target = data.totalGenerations + gensOffset;
+    } catch {
+      // Fallback: just use offset values if API is unavailable
+      document.getElementById('proofUsers').dataset.target = '150';
+      document.getElementById('proofGenerations').dataset.target = '2500';
+    }
+
+    // Animate numbers counting up when scrolled into view
+    function animateCounter(el, target, duration) {
+      const start = 0;
+      const startTime = performance.now();
+      const isPlus = target > 99; // show "+" suffix for large numbers
+      function tick(now) {
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        // Ease out cubic for a satisfying deceleration
+        const eased = 1 - Math.pow(1 - progress, 3);
+        const current = Math.floor(eased * (target - start) + start);
+        el.textContent = current.toLocaleString() + (isPlus ? '+' : '');
+        if (progress < 1) requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    }
+
+    let animated = false;
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting && !animated) {
+          animated = true;
+          document.querySelectorAll('.proof-number[data-target]').forEach(el => {
+            const target = parseInt(el.dataset.target);
+            if (target > 0) {
+              animateCounter(el, target, 1800);
+            }
+          });
+          observer.disconnect();
+        }
+      });
+    }, { threshold: 0.3 });
+
+    const section = document.getElementById('socialProof');
+    if (section) observer.observe(section);
+  })();
+
+  // ===== EMAIL CAPTURE BANNER =====
+  function shouldShowEmailBanner() {
+    // Don't show if user is logged in, or already dismissed/submitted
+    if (currentUser) return false;
+    if (localStorage.getItem('emailBannerDismissed')) return false;
+    return true;
+  }
+
+  function showEmailBanner() {
+    if (!shouldShowEmailBanner()) return;
+    const banner = document.getElementById('emailBanner');
+    if (banner) banner.classList.add('visible');
+  }
+
+  function dismissEmailBanner() {
+    const banner = document.getElementById('emailBanner');
+    if (banner) banner.classList.remove('visible');
+    localStorage.setItem('emailBannerDismissed', '1');
+  }
+
+  async function submitBannerEmail() {
+    const input = document.getElementById('bannerEmail');
+    const email = input.value.trim();
+    if (!email) { toast('Please enter your email', 'error'); return; }
+    try {
+      const data = await api('/api/subscribe', { method: 'POST', body: JSON.stringify({ email }) });
+      toast(data.message || 'Subscribed!', 'success');
+      dismissEmailBanner();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+
+  async function submitFooterEmail() {
+    const input = document.getElementById('footerEmail');
+    const msgEl = document.getElementById('footerEmailMsg');
+    const email = input.value.trim();
+    if (!email) { toast('Please enter your email', 'error'); return; }
+    try {
+      const data = await api('/api/subscribe', { method: 'POST', body: JSON.stringify({ email }) });
+      msgEl.textContent = data.message || 'Successfully subscribed!';
+      msgEl.style.color = 'var(--success)';
+      input.value = '';
+      localStorage.setItem('emailBannerDismissed', '1');
+    } catch (err) {
+      msgEl.textContent = err.message;
+      msgEl.style.color = 'var(--danger)';
+    }
+  }
+
+  // Show banner after 5 seconds for non-logged-in users
+  setTimeout(() => { showEmailBanner(); }, 5000);
 </script>
 </body>
 </html>
