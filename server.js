@@ -420,6 +420,8 @@ function renderBlogPage(title, metaDesc, canonical, ogType, bodyContent) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-JE6KT383HE"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-JE6KT383HE');</script>
   <title>${escapeHtml(title)}</title>
   <meta name="description" content="${escapeHtml(metaDesc)}">
   <link rel="canonical" href="${canonical}">
