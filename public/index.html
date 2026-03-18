@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ContentAI — AI-Powered Business Content Generator</title>
+  <meta name="description" content="Generate product descriptions, marketing emails, social media posts, and ad copy in seconds with AI. Start free.">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #0a0a0f; --surface: #12121a; --border: #1e1e2e; --text: #e4e4e7;
+      --muted: #71717a; --primary: #6366f1; --primary-hover: #818cf8;
+      --success: #22c55e; --danger: #ef4444; --warning: #f59e0b;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+    a { color: var(--primary); text-decoration: none; }
+
+    /* Layout */
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
+    .hidden { display: none !important; }
+
+    /* Navbar */
+    nav { background: var(--surface); border-bottom: 1px solid var(--border); padding: 16px 0; position: sticky; top: 0; z-index: 100; }
+    nav .container { display: flex; justify-content: space-between; align-items: center; }
+    .logo { font-size: 20px; font-weight: 700; color: var(--text); }
+    .logo span { color: var(--primary); }
+    .nav-links { display: flex; gap: 16px; align-items: center; }
+    .nav-links a { color: var(--muted); font-size: 14px; }
+    .nav-links a:hover { color: var(--text); }
+
+    /* Buttons */
+    .btn { display: inline-block; padding: 10px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s; }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+    .btn-outline:hover { border-color: var(--primary); }
+    .btn-sm { padding: 6px 16px; font-size: 13px; }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Cards */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+
+    /* Forms */
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; font-weight: 500; }
+    input, textarea, select {
+      width: 100%; padding: 10px 14px; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-size: 14px; font-family: inherit;
+    }
+    input:focus, textarea:focus, select:focus { outline: none; border-color: var(--primary); }
+    textarea { resize: vertical; min-height: 80px; }
+
+    /* Hero */
+    .hero { padding: 80px 0; text-align: center; }
+    .hero h1 { font-size: 48px; font-weight: 800; line-height: 1.1; margin-bottom: 20px; }
+    .hero h1 span { background: linear-gradient(135deg, var(--primary), #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .hero p { font-size: 18px; color: var(--muted); max-width: 600px; margin: 0 auto 32px; }
+    .hero-cta { display: flex; gap: 12px; justify-content: center; }
+
+    /* Features */
+    .features { padding: 60px 0; }
+    .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+    .feature-card { text-align: center; }
+    .feature-card .icon { font-size: 32px; margin-bottom: 12px; }
+    .feature-card h3 { font-size: 18px; margin-bottom: 8px; }
+    .feature-card p { font-size: 14px; color: var(--muted); }
+
+    /* Pricing */
+    .pricing { padding: 60px 0; }
+    .pricing h2 { text-align: center; font-size: 32px; margin-bottom: 40px; }
+    .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
+    .price-card { text-align: center; padding: 32px 24px; }
+    .price-card.featured { border-color: var(--primary); position: relative; }
+    .price-card.featured::before { content: 'POPULAR'; position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: var(--primary); color: white; font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 20px; }
+    .price-card h3 { font-size: 20px; margin-bottom: 8px; }
+    .price-amount { font-size: 40px; font-weight: 800; margin: 16px 0 8px; }
+    .price-amount span { font-size: 16px; color: var(--muted); font-weight: 400; }
+    .price-card ul { list-style: none; margin: 20px 0; text-align: left; }
+    .price-card li { padding: 6px 0; font-size: 14px; color: var(--muted); }
+    .price-card li::before { content: '✓ '; color: var(--success); font-weight: 700; }
+
+    /* Dashboard */
+    .dashboard { padding: 40px 0; }
+    .dash-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+    .dash-header h2 { font-size: 24px; }
+    .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 32px; }
+    .stat-card { text-align: center; }
+    .stat-card .stat-value { font-size: 32px; font-weight: 700; color: var(--primary); }
+    .stat-card .stat-label { font-size: 13px; color: var(--muted); }
+
+    /* Generator */
+    .generator { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 32px; }
+    @media (max-width: 768px) { .generator { grid-template-columns: 1fr; } .hero h1 { font-size: 32px; } }
+    .output-box { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px; min-height: 300px; white-space: pre-wrap; font-size: 14px; line-height: 1.7; }
+    .output-box.empty { color: var(--muted); display: flex; align-items: center; justify-content: center; }
+
+    /* History */
+    .history-item { padding: 16px; border-bottom: 1px solid var(--border); cursor: pointer; }
+    .history-item:hover { background: var(--bg); }
+    .history-item .type { font-size: 12px; color: var(--primary); font-weight: 600; text-transform: uppercase; }
+    .history-item .preview { font-size: 14px; color: var(--muted); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .history-item .date { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+    .tab { padding: 10px 20px; font-size: 14px; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; background: none; border-top: none; border-left: none; border-right: none; }
+    .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+    /* Toast */
+    .toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); border: 1px solid var(--border); padding: 12px 20px; border-radius: 8px; font-size: 14px; z-index: 1000; animation: slideIn 0.3s; }
+    .toast.error { border-color: var(--danger); }
+    .toast.success { border-color: var(--success); }
+    @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+    .loading { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.6s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Copy button */
+    .copy-btn { position: absolute; top: 8px; right: 8px; }
+    .output-wrapper { position: relative; }
+
+    footer { padding: 40px 0; text-align: center; color: var(--muted); font-size: 13px; border-top: 1px solid var(--border); }
+  </style>
+</head>
+<body>
+
+<!-- NAVBAR -->
+<nav>
+  <div class="container">
+    <div class="logo">Content<span>AI</span></div>
+    <div class="nav-links" id="navLinks">
+      <a href="#features">Features</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#" onclick="showAuth('login')" id="navLogin">Login</a>
+      <button class="btn btn-primary btn-sm" onclick="showAuth('register')" id="navSignup">Get Started Free</button>
+      <span id="navUser" class="hidden" style="display:none">
+        <a href="#" onclick="showDashboard()">Dashboard</a>
+        <a href="#" onclick="logout()">Logout</a>
+      </span>
+    </div>
+  </div>
+</nav>
+
+<!-- LANDING PAGE -->
+<div id="landingPage">
+  <section class="hero">
+    <div class="container">
+      <h1>AI Content That <span>Converts</span></h1>
+      <p>Generate product descriptions, marketing emails, social posts, and ad copy in seconds. Built for small businesses that need professional content without the agency price tag.</p>
+      <div class="hero-cta">
+        <button class="btn btn-primary" onclick="showAuth('register')">Start Free — 5 Generations</button>
+        <button class="btn btn-outline" onclick="document.getElementById('pricing').scrollIntoView({behavior:'smooth'})">See Pricing</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="features" id="features">
+    <div class="container">
+      <div class="features-grid">
+        <div class="card feature-card">
+          <div class="icon">⚡</div>
+          <h3>Product Descriptions</h3>
+          <p>Compelling, SEO-optimized descriptions that turn browsers into buyers. Works for any product or service.</p>
+        </div>
+        <div class="card feature-card">
+          <div class="icon">📧</div>
+          <h3>Marketing Emails</h3>
+          <p>High-converting email campaigns using proven frameworks. Subject lines that get opened.</p>
+        </div>
+        <div class="card feature-card">
+          <div class="icon">📱</div>
+          <h3>Social Media Posts</h3>
+          <p>Scroll-stopping posts for Instagram, Twitter, LinkedIn, and TikTok. With hashtags and hooks.</p>
+        </div>
+        <div class="card feature-card">
+          <div class="icon">🎯</div>
+          <h3>Ad Copy</h3>
+          <p>Facebook, Google, and Instagram ad copy that drives clicks and conversions.</p>
+        </div>
+        <div class="card feature-card">
+          <div class="icon">📝</div>
+          <h3>Blog Posts</h3>
+          <p>SEO-friendly articles that rank on Google and establish your authority.</p>
+        </div>
+        <div class="card feature-card">
+          <div class="icon">🔍</div>
+          <h3>SEO Meta Tags</h3>
+          <p>Optimized titles and descriptions that maximize your click-through rate from search.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pricing" id="pricing">
+    <div class="container">
+      <h2>Simple, Transparent Pricing</h2>
+      <div class="pricing-grid" id="pricingGrid">
+        <div class="card price-card">
+          <h3>Free</h3>
+          <div class="price-amount">$0<span>/mo</span></div>
+          <ul>
+            <li>5 generations per month</li>
+            <li>All content types</li>
+            <li>Basic support</li>
+          </ul>
+          <button class="btn btn-outline" style="width:100%" onclick="showAuth('register')">Get Started</button>
+        </div>
+        <div class="card price-card">
+          <h3>Starter</h3>
+          <div class="price-amount">$29<span>/mo</span></div>
+          <ul>
+            <li>100 generations per month</li>
+            <li>All content types</li>
+            <li>API access</li>
+            <li>Priority support</li>
+          </ul>
+          <button class="btn btn-primary" style="width:100%" onclick="handleUpgrade('starter')">Subscribe</button>
+        </div>
+        <div class="card price-card featured">
+          <h3>Pro</h3>
+          <div class="price-amount">$79<span>/mo</span></div>
+          <ul>
+            <li>500 generations per month</li>
+            <li>All content types</li>
+            <li>API access</li>
+            <li>Priority support</li>
+            <li>Custom tones</li>
+          </ul>
+          <button class="btn btn-primary" style="width:100%" onclick="handleUpgrade('pro')">Subscribe</button>
+        </div>
+        <div class="card price-card">
+          <h3>Unlimited</h3>
+          <div class="price-amount">$149<span>/mo</span></div>
+          <ul>
+            <li>Unlimited generations</li>
+            <li>All content types</li>
+            <li>API access</li>
+            <li>Dedicated support</li>
+            <li>Custom tones</li>
+          </ul>
+          <button class="btn btn-primary" style="width:100%" onclick="handleUpgrade('unlimited')">Subscribe</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- AUTH MODAL -->
+<div id="authModal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:200">
+  <div class="card" style="width:400px;max-width:90vw">
+    <h2 id="authTitle" style="margin-bottom:20px">Sign Up</h2>
+    <form id="authForm" onsubmit="handleAuth(event)">
+      <div class="form-group" id="nameGroup">
+        <label>Name</label>
+        <input type="text" id="authName" placeholder="Your name">
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="authEmail" placeholder="you@example.com" required>
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="authPassword" placeholder="Min 8 characters" required minlength="8">
+      </div>
+      <button type="submit" class="btn btn-primary" style="width:100%" id="authSubmit">Create Account</button>
+      <p style="text-align:center;margin-top:12px;font-size:13px;color:var(--muted)">
+        <span id="authSwitch"></span>
+      </p>
+    </form>
+    <button onclick="hideAuth()" style="position:absolute;top:16px;right:16px;background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">&times;</button>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboardPage" class="hidden">
+  <div class="dashboard">
+    <div class="container">
+      <div class="dash-header">
+        <h2>Dashboard</h2>
+        <div>
+          <span style="font-size:13px;color:var(--muted)" id="planBadge">Free Plan</span>
+          <button class="btn btn-primary btn-sm" style="margin-left:8px" onclick="document.getElementById('pricing').scrollIntoView({behavior:'smooth'});showLanding()">Upgrade</button>
+        </div>
+      </div>
+
+      <div class="stats-row">
+        <div class="card stat-card">
+          <div class="stat-value" id="statUsed">0</div>
+          <div class="stat-label">Generations Used</div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-value" id="statRemaining">5</div>
+          <div class="stat-label">Remaining</div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-value" id="statPlan">Free</div>
+          <div class="stat-label">Current Plan</div>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <button class="tab active" onclick="switchTab('generate', this)">Generate</button>
+        <button class="tab" onclick="switchTab('history', this)">History</button>
+        <button class="tab" onclick="switchTab('api', this)">API</button>
+      </div>
+
+      <!-- GENERATE TAB -->
+      <div id="tab-generate">
+        <div class="generator">
+          <div class="card">
+            <h3 style="margin-bottom:16px">Create Content</h3>
+            <div class="form-group">
+              <label>Content Type</label>
+              <select id="genType" onchange="updateForm()">
+                <option value="product-description">Product Description</option>
+                <option value="marketing-email">Marketing Email</option>
+                <option value="social-media">Social Media Post</option>
+                <option value="ad-copy">Ad Copy</option>
+                <option value="blog-post">Blog Post</option>
+                <option value="seo-meta">SEO Meta Tags</option>
+              </select>
+            </div>
+            <div id="dynamicFields"></div>
+            <div class="form-group">
+              <label>Tone</label>
+              <select id="genTone">
+                <option value="Professional">Professional</option>
+                <option value="Casual">Casual & Friendly</option>
+                <option value="Urgent">Urgent & Persuasive</option>
+                <option value="Luxurious">Luxurious & Premium</option>
+                <option value="Fun">Fun & Playful</option>
+              </select>
+            </div>
+            <button class="btn btn-primary" style="width:100%" onclick="generate()" id="genBtn">Generate Content</button>
+          </div>
+          <div class="card">
+            <h3 style="margin-bottom:16px">Output</h3>
+            <div class="output-wrapper">
+              <div class="output-box empty" id="outputBox">Your generated content will appear here</div>
+              <button class="btn btn-outline btn-sm copy-btn hidden" id="copyBtn" onclick="copyOutput()">Copy</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- HISTORY TAB -->
+      <div id="tab-history" class="hidden">
+        <div class="card" id="historyList">
+          <p style="color:var(--muted);text-align:center;padding:40px">Loading history...</p>
+        </div>
+      </div>
+
+      <!-- API TAB -->
+      <div id="tab-api" class="hidden">
+        <div class="card">
+          <h3 style="margin-bottom:16px">API Access</h3>
+          <p style="font-size:14px;color:var(--muted);margin-bottom:16px">Use our API to integrate AI content generation into your own apps. Requires a paid plan.</p>
+          <div style="margin-bottom:16px">
+            <button class="btn btn-primary btn-sm" onclick="createApiKey()">Create API Key</button>
+          </div>
+          <div id="apiKeysList"></div>
+          <div style="margin-top:24px;padding:16px;background:var(--bg);border-radius:8px">
+            <p style="font-size:13px;color:var(--muted);margin-bottom:8px">Example request:</p>
+            <pre style="font-size:12px;color:var(--text);overflow-x:auto">curl -X POST ${location.origin}/api/v1/generate \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: YOUR_API_KEY" \
+  -d '{"type":"product-description","input":{"product":"Blue Widget","details":"Lightweight, durable"}}'</pre>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="container">
+    <p>ContentAI — AI-powered content generation for businesses</p>
+  </div>
+</footer>
+
+<script>
+  // State
+  let currentUser = null;
+  let authMode = 'register';
+
+  // Form fields per content type
+  const FIELDS = {
+    'product-description': [
+      { id: 'product', label: 'Product Name', type: 'input', placeholder: 'e.g., Wireless Bluetooth Earbuds' },
+      { id: 'details', label: 'Key Details', type: 'textarea', placeholder: 'Key features, materials, target audience...' },
+    ],
+    'marketing-email': [
+      { id: 'purpose', label: 'Email Purpose', type: 'input', placeholder: 'e.g., Launch announcement for new product' },
+      { id: 'business', label: 'Business Name', type: 'input', placeholder: 'e.g., TechGadgets Inc.' },
+      { id: 'audience', label: 'Target Audience', type: 'input', placeholder: 'e.g., Small business owners' },
+      { id: 'cta', label: 'Call to Action', type: 'input', placeholder: 'e.g., Shop Now, Learn More' },
+    ],
+    'social-media': [
+      { id: 'platform', label: 'Platform', type: 'select', options: ['Instagram', 'Twitter/X', 'LinkedIn', 'TikTok', 'Facebook'] },
+      { id: 'topic', label: 'Topic', type: 'input', placeholder: 'e.g., New product launch, behind the scenes' },
+      { id: 'goal', label: 'Goal', type: 'select', options: ['Engagement', 'Traffic', 'Sales', 'Brand Awareness'] },
+    ],
+    'ad-copy': [
+      { id: 'platform', label: 'Ad Platform', type: 'select', options: ['Facebook Ads', 'Google Ads', 'Instagram Ads', 'TikTok Ads'] },
+      { id: 'product', label: 'Product/Service', type: 'input', placeholder: 'What are you advertising?' },
+      { id: 'audience', label: 'Target Audience', type: 'input', placeholder: 'Who is this for?' },
+      { id: 'usp', label: 'Unique Selling Point', type: 'input', placeholder: 'What makes you different?' },
+    ],
+    'blog-post': [
+      { id: 'topic', label: 'Topic', type: 'input', placeholder: 'e.g., 10 Ways to Improve Your Morning Routine' },
+      { id: 'keyword', label: 'Target Keyword (SEO)', type: 'input', placeholder: 'e.g., morning routine tips' },
+      { id: 'audience', label: 'Target Audience', type: 'input', placeholder: 'e.g., Busy professionals' },
+    ],
+    'seo-meta': [
+      { id: 'topic', label: 'Page Topic', type: 'input', placeholder: 'What is the page about?' },
+      { id: 'keyword', label: 'Target Keyword', type: 'input', placeholder: 'e.g., best running shoes 2025' },
+      { id: 'pageType', label: 'Page Type', type: 'select', options: ['Landing page', 'Product page', 'Blog post', 'Category page', 'Homepage'] },
+    ],
+  };
+
+  // API helper
+  async function api(path, opts = {}) {
+    const res = await fetch(path, {
+      headers: { 'Content-Type': 'application/json', ...opts.headers },
+      ...opts,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Request failed');
+    return data;
+  }
+
+  // Toast
+  function toast(msg, type = 'info') {
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 3000);
+  }
+
+  // Auth
+  function showAuth(mode) {
+    authMode = mode;
+    document.getElementById('authModal').classList.remove('hidden');
+    document.getElementById('authTitle').textContent = mode === 'register' ? 'Create Account' : 'Welcome Back';
+    document.getElementById('authSubmit').textContent = mode === 'register' ? 'Create Account' : 'Login';
+    document.getElementById('nameGroup').classList.toggle('hidden', mode === 'login');
+    document.getElementById('authSwitch').innerHTML = mode === 'register'
+      ? 'Already have an account? <a href="#" onclick="showAuth(\'login\')">Login</a>'
+      : 'No account? <a href="#" onclick="showAuth(\'register\')">Sign up free</a>';
+  }
+
+  function hideAuth() {
+    document.getElementById('authModal').classList.add('hidden');
+  }
+
+  async function handleAuth(e) {
+    e.preventDefault();
+    const email = document.getElementById('authEmail').value;
+    const password = document.getElementById('authPassword').value;
+    const name = document.getElementById('authName').value;
+    try {
+      const data = await api(`/api/auth/${authMode}`, {
+        method: 'POST',
+        body: JSON.stringify({ email, password, name }),
+      });
+      currentUser = data.user;
+      localStorage.setItem('token', data.token);
+      hideAuth();
+      showDashboard();
+      toast('Welcome!', 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+
+  async function logout() {
+    await api('/api/auth/logout', { method: 'POST' });
+    currentUser = null;
+    localStorage.removeItem('token');
+    showLanding();
+  }
+
+  // Navigation
+  function showLanding() {
+    document.getElementById('landingPage').classList.remove('hidden');
+    document.getElementById('dashboardPage').classList.add('hidden');
+    document.getElementById('navLogin').classList.toggle('hidden', !!currentUser);
+    document.getElementById('navSignup').classList.toggle('hidden', !!currentUser);
+    document.getElementById('navUser').classList.toggle('hidden', !currentUser);
+    if (currentUser) document.getElementById('navUser').style.display = currentUser ? 'inline' : 'none';
+  }
+
+  function showDashboard() {
+    document.getElementById('landingPage').classList.add('hidden');
+    document.getElementById('dashboardPage').classList.remove('hidden');
+    document.getElementById('navLogin').classList.add('hidden');
+    document.getElementById('navSignup').classList.add('hidden');
+    document.getElementById('navUser').classList.remove('hidden');
+    document.getElementById('navUser').style.display = 'inline';
+    updateStats();
+    updateForm();
+  }
+
+  function updateStats() {
+    if (!currentUser) return;
+    document.getElementById('statUsed').textContent = currentUser.generations_used;
+    document.getElementById('statRemaining').textContent = currentUser.generations_limit - currentUser.generations_used;
+    document.getElementById('statPlan').textContent = currentUser.plan.charAt(0).toUpperCase() + currentUser.plan.slice(1);
+    document.getElementById('planBadge').textContent = `${currentUser.plan.charAt(0).toUpperCase() + currentUser.plan.slice(1)} Plan`;
+  }
+
+  // Tabs
+  function switchTab(tab, el) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+    ['generate', 'history', 'api'].forEach(t => {
+      document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== tab);
+    });
+    if (tab === 'history') loadHistory();
+    if (tab === 'api') loadApiKeys();
+  }
+
+  // Dynamic form
+  function updateForm() {
+    const type = document.getElementById('genType').value;
+    const fields = FIELDS[type] || [];
+    const container = document.getElementById('dynamicFields');
+    container.innerHTML = fields.map(f => {
+      if (f.type === 'select') {
+        return `<div class="form-group"><label>${f.label}</label><select id="field-${f.id}">${f.options.map(o => `<option value="${o}">${o}</option>`).join('')}</select></div>`;
+      } else if (f.type === 'textarea') {
+        return `<div class="form-group"><label>${f.label}</label><textarea id="field-${f.id}" placeholder="${f.placeholder}"></textarea></div>`;
+      }
+      return `<div class="form-group"><label>${f.label}</label><input id="field-${f.id}" placeholder="${f.placeholder}"></div>`;
+    }).join('');
+  }
+
+  // Generate
+  async function generate() {
+    const type = document.getElementById('genType').value;
+    const fields = FIELDS[type] || [];
+    const input = { tone: document.getElementById('genTone').value };
+    for (const f of fields) {
+      input[f.id] = document.getElementById(`field-${f.id}`)?.value || '';
+    }
+
+    const btn = document.getElementById('genBtn');
+    const box = document.getElementById('outputBox');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading"></span> Generating...';
+    box.className = 'output-box empty';
+    box.textContent = 'Generating your content...';
+
+    try {
+      const data = await api('/api/generate', { method: 'POST', body: JSON.stringify({ type, input }) });
+      box.className = 'output-box';
+      box.textContent = data.content;
+      document.getElementById('copyBtn').classList.remove('hidden');
+      currentUser.generations_used++;
+      updateStats();
+      toast(`Done! ${data.remaining} generations remaining.`, 'success');
+    } catch (err) {
+      box.className = 'output-box empty';
+      box.textContent = 'Generation failed';
+      toast(err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Generate Content';
+    }
+  }
+
+  function copyOutput() {
+    const text = document.getElementById('outputBox').textContent;
+    navigator.clipboard.writeText(text);
+    toast('Copied to clipboard!', 'success');
+  }
+
+  // History
+  async function loadHistory() {
+    try {
+      const data = await api('/api/history');
+      const list = document.getElementById('historyList');
+      if (data.history.length === 0) {
+        list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:40px">No generations yet. Create your first one!</p>';
+        return;
+      }
+      list.innerHTML = data.history.map(h => `
+        <div class="history-item" onclick="this.querySelector('.full').classList.toggle('hidden')">
+          <div class="type">${h.type.replace('-', ' ')}</div>
+          <div class="preview">${h.result.substring(0, 100)}...</div>
+          <div class="date">${new Date(h.created_at).toLocaleDateString()}</div>
+          <div class="full hidden" style="margin-top:12px;padding:12px;background:var(--bg);border-radius:8px;white-space:pre-wrap;font-size:13px">${h.result.replace(/</g, '&lt;')}</div>
+        </div>
+      `).join('');
+    } catch (err) {
+      toast('Failed to load history', 'error');
+    }
+  }
+
+  // API Keys
+  async function loadApiKeys() {
+    try {
+      const data = await api('/api/keys');
+      document.getElementById('apiKeysList').innerHTML = data.keys.length
+        ? data.keys.map(k => `<div style="padding:8px 0;font-size:13px;border-bottom:1px solid var(--border)"><strong>${k.name}</strong> — <code>${k.key_preview}</code> — ${new Date(k.created_at).toLocaleDateString()}</div>`).join('')
+        : '<p style="color:var(--muted);font-size:13px">No API keys yet.</p>';
+    } catch {}
+  }
+
+  async function createApiKey() {
+    const name = prompt('API key name (e.g., "My App")');
+    if (!name) return;
+    try {
+      const data = await api('/api/keys', { method: 'POST', body: JSON.stringify({ name }) });
+      toast('API key created! Copy it now — it won\'t be shown again.', 'success');
+      alert(`Your API key:\n\n${data.key}\n\nSave this — it won't be shown again!`);
+      loadApiKeys();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+
+  // Upgrade
+  async function handleUpgrade(plan) {
+    if (!currentUser) { showAuth('register'); return; }
+    try {
+      const data = await api('/api/checkout', { method: 'POST', body: JSON.stringify({ plan }) });
+      window.location.href = data.url;
+    } catch (err) {
+      toast(err.message || 'Stripe not configured yet. Add your Stripe keys to .env', 'error');
+    }
+  }
+
+  // Init — check if logged in
+  async function init() {
+    try {
+      const data = await api('/api/auth/me');
+      currentUser = data.user;
+      showDashboard();
+    } catch {
+      showLanding();
+    }
+    updateForm();
+  }
+
+  init();
+</script>
+</body>
+</html>
