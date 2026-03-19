@@ -29,9 +29,9 @@ function getClient() {
   });
 }
 
-function getBlogPostUrl(blogPostId) {
+async function getBlogPostUrl(blogPostId) {
   if (!blogPostId) return null;
-  const post = db.prepare('SELECT slug FROM blog_posts WHERE id = ?').get(blogPostId);
+  const post = await db.get('SELECT slug FROM blog_posts WHERE id = $1', blogPostId);
   if (!post) return null;
   const baseUrl = process.env.BASE_URL || 'http://localhost:' + (process.env.PORT || 3001);
   return `${baseUrl}/blog/${post.slug}`;
@@ -43,9 +43,9 @@ async function postNextTweet() {
     return { posted: false, message: 'Twitter not configured' };
   }
 
-  const item = db.prepare(
+  const item = await db.get(
     "SELECT * FROM marketing_queue WHERE platform = 'twitter' AND status = 'pending' AND content_type = 'tweet' ORDER BY id ASC LIMIT 1"
-  ).get();
+  );
 
   if (!item) {
     return { posted: false, message: 'No pending tweets' };
@@ -63,7 +63,7 @@ async function postNextTweet() {
 
     // Replace URL placeholders with actual blog post URL
     if (item.blog_post_id) {
-      const blogUrl = getBlogPostUrl(item.blog_post_id);
+      const blogUrl = await getBlogPostUrl(item.blog_post_id);
       if (blogUrl) {
         text = text.replace(/\{blog_url\}/g, blogUrl);
         text = text.replace(/\{url\}/g, blogUrl);
@@ -72,15 +72,17 @@ async function postNextTweet() {
 
     const tweet = await client.v2.tweet(text);
 
-    db.prepare(
-      "UPDATE marketing_queue SET status = 'posted', posted_at = CURRENT_TIMESTAMP, external_id = ? WHERE id = ?"
-    ).run(tweet.data.id, item.id);
+    await db.run(
+      "UPDATE marketing_queue SET status = 'posted', posted_at = CURRENT_TIMESTAMP, external_id = $1 WHERE id = $2",
+      tweet.data.id, item.id
+    );
 
     return { posted: true, tweetId: tweet.data.id, text };
   } catch (err) {
-    db.prepare(
-      "UPDATE marketing_queue SET status = 'failed', error = ? WHERE id = ?"
-    ).run(err.message, item.id);
+    await db.run(
+      "UPDATE marketing_queue SET status = 'failed', error = $1 WHERE id = $2",
+      err.message, item.id
+    );
 
     return { posted: false, error: err.message };
   }
@@ -93,9 +95,9 @@ async function postNextThread() {
   }
 
   // Get the first pending thread group (find the oldest parent_id or the oldest thread item)
-  const firstItem = db.prepare(
+  const firstItem = await db.get(
     "SELECT * FROM marketing_queue WHERE platform = 'twitter' AND status = 'pending' AND content_type = 'thread' ORDER BY parent_id ASC, id ASC LIMIT 1"
-  ).get();
+  );
 
   if (!firstItem) {
     return { posted: false, message: 'No pending threads' };
@@ -103,9 +105,10 @@ async function postNextThread() {
 
   // Get all items in this thread (same parent_id, or if parent_id is null, group by the first item's id)
   const threadParentId = firstItem.parent_id || firstItem.id;
-  const threadItems = db.prepare(
-    "SELECT * FROM marketing_queue WHERE platform = 'twitter' AND content_type = 'thread' AND status = 'pending' AND (parent_id = ? OR id = ?) ORDER BY id ASC"
-  ).all(threadParentId, threadParentId);
+  const threadItems = await db.all(
+    "SELECT * FROM marketing_queue WHERE platform = 'twitter' AND content_type = 'thread' AND status = 'pending' AND (parent_id = $1 OR id = $2) ORDER BY id ASC",
+    threadParentId, threadParentId
+  );
 
   if (threadItems.length === 0) {
     return { posted: false, message: 'No pending threads' };
@@ -127,7 +130,7 @@ async function postNextThread() {
 
       // Replace URL placeholders
       if (item.blog_post_id) {
-        const blogUrl = getBlogPostUrl(item.blog_post_id);
+        const blogUrl = await getBlogPostUrl(item.blog_post_id);
         if (blogUrl) {
           text = text.replace(/\{blog_url\}/g, blogUrl);
           text = text.replace(/\{url\}/g, blogUrl);
@@ -141,9 +144,10 @@ async function postNextThread() {
       const tweet = await client.v2.tweet(text, tweetOptions);
       lastTweetId = tweet.data.id;
 
-      db.prepare(
-        "UPDATE marketing_queue SET status = 'posted', posted_at = CURRENT_TIMESTAMP, external_id = ? WHERE id = ?"
-      ).run(tweet.data.id, item.id);
+      await db.run(
+        "UPDATE marketing_queue SET status = 'posted', posted_at = CURRENT_TIMESTAMP, external_id = $1 WHERE id = $2",
+        tweet.data.id, item.id
+      );
 
       postedIds.push(item.id);
     }
@@ -153,9 +157,10 @@ async function postNextThread() {
     // Mark remaining unposted items as failed
     for (const item of threadItems) {
       if (!postedIds.includes(item.id)) {
-        db.prepare(
-          "UPDATE marketing_queue SET status = 'failed', error = ? WHERE id = ?"
-        ).run(err.message, item.id);
+        await db.run(
+          "UPDATE marketing_queue SET status = 'failed', error = $1 WHERE id = $2",
+          err.message, item.id
+        );
       }
     }
 

@@ -23,14 +23,14 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Stripe webhook needs raw body - must be before express.json()
-app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), (req, res) => {
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature'];
   const s = getStripe();
   if (!s) return res.status(400).send('Stripe not configured');
 
   try {
     const event = s.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
-    handleWebhook(event);
+    await handleWebhook(event);
     res.json({ received: true });
   } catch (err) {
     res.status(400).send(`Webhook Error: ${err.message}`);
@@ -95,7 +95,7 @@ app.post('/api/generate', authMiddleware, async (req, res) => {
     if (!type || !input) return res.status(400).json({ error: 'Type and input required' });
 
     // Check usage limits (bonus generations are used before monthly limit)
-    const user = db.prepare('SELECT generations_used, generations_limit, bonus_generations FROM users WHERE id = ?').get(req.user.id);
+    const user = await db.get('SELECT generations_used, generations_limit, bonus_generations FROM users WHERE id = $1', req.user.id);
     const totalAvailable = user.generations_limit + user.bonus_generations;
     if (user.generations_used >= totalAvailable) {
       return res.status(403).json({ error: 'Generation limit reached. Please upgrade your plan.', needsUpgrade: true });
@@ -104,16 +104,15 @@ app.post('/api/generate', authMiddleware, async (req, res) => {
     const result = await generateContent(type, input);
 
     // Save to DB and decrement: use bonus_generations first, then count against monthly limit
-    db.prepare('INSERT INTO generations (user_id, type, prompt, result) VALUES (?, ?, ?, ?)')
-      .run(req.user.id, type, JSON.stringify(input), result.content);
+    await db.run('INSERT INTO generations (user_id, type, prompt, result) VALUES ($1, $2, $3, $4)', req.user.id, type, JSON.stringify(input), result.content);
 
     if (user.bonus_generations > 0) {
-      db.prepare('UPDATE users SET bonus_generations = bonus_generations - 1 WHERE id = ?').run(req.user.id);
+      await db.run('UPDATE users SET bonus_generations = bonus_generations - 1 WHERE id = $1', req.user.id);
     } else {
-      db.prepare('UPDATE users SET generations_used = generations_used + 1 WHERE id = ?').run(req.user.id);
+      await db.run('UPDATE users SET generations_used = generations_used + 1 WHERE id = $1', req.user.id);
     }
 
-    const updated = db.prepare('SELECT generations_used, generations_limit, bonus_generations FROM users WHERE id = ?').get(req.user.id);
+    const updated = await db.get('SELECT generations_used, generations_limit, bonus_generations FROM users WHERE id = $1', req.user.id);
     const remaining = (updated.generations_limit - updated.generations_used) + updated.bonus_generations;
     res.json({ ...result, remaining });
   } catch (err) {
@@ -122,52 +121,52 @@ app.post('/api/generate', authMiddleware, async (req, res) => {
   }
 });
 
-app.get('/api/history', authMiddleware, (req, res) => {
-  const history = db.prepare('SELECT id, type, prompt, result, created_at FROM generations WHERE user_id = ? ORDER BY created_at DESC LIMIT 50').all(req.user.id);
+app.get('/api/history', authMiddleware, async (req, res) => {
+  const history = await db.all('SELECT id, type, prompt, result, created_at FROM generations WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50', req.user.id);
   res.json({ history });
 });
 
 // ===== API KEY ROUTES =====
-app.post('/api/keys', authMiddleware, (req, res) => {
+app.post('/api/keys', authMiddleware, async (req, res) => {
   if (req.user.plan === 'free') return res.status(403).json({ error: 'API keys require a paid plan' });
 
   const key = `cai_${crypto.randomBytes(24).toString('hex')}`;
   const name = req.body.name || 'Default';
-  db.prepare('INSERT INTO api_keys (user_id, key, name) VALUES (?, ?, ?)').run(req.user.id, key, name);
+  await db.run('INSERT INTO api_keys (user_id, key, name) VALUES ($1, $2, $3)', req.user.id, key, name);
   res.json({ key, name });
 });
 
-app.get('/api/keys', authMiddleware, (req, res) => {
-  const keys = db.prepare('SELECT id, name, substr(key, 1, 8) || \'...\' as key_preview, created_at FROM api_keys WHERE user_id = ?').all(req.user.id);
+app.get('/api/keys', authMiddleware, async (req, res) => {
+  const keys = await db.all("SELECT id, name, substr(key, 1, 8) || '...' as key_preview, created_at FROM api_keys WHERE user_id = $1", req.user.id);
   res.json({ keys });
 });
 
 // ===== REFERRAL ROUTES =====
-app.get('/api/referral', authMiddleware, (req, res) => {
-  const user = db.prepare('SELECT referral_code, bonus_generations FROM users WHERE id = ?').get(req.user.id);
-  const referralCount = db.prepare('SELECT COUNT(*) as count FROM users WHERE referred_by = ?').get(req.user.id).count;
+app.get('/api/referral', authMiddleware, async (req, res) => {
+  const user = await db.get('SELECT referral_code, bonus_generations FROM users WHERE id = $1', req.user.id);
+  const referralRow = await db.get('SELECT COUNT(*) as count FROM users WHERE referred_by = $1', req.user.id);
   res.json({
     referral_code: user.referral_code,
-    referral_count: referralCount,
+    referral_count: referralRow.count,
     bonus_generations: user.bonus_generations,
   });
 });
 
-app.post('/api/referral/apply', authMiddleware, (req, res) => {
+app.post('/api/referral/apply', authMiddleware, async (req, res) => {
   const { referral_code } = req.body;
   if (!referral_code) return res.status(400).json({ error: 'Referral code required' });
 
   // Check if user was already referred
-  const user = db.prepare('SELECT id, referred_by FROM users WHERE id = ?').get(req.user.id);
+  const user = await db.get('SELECT id, referred_by FROM users WHERE id = $1', req.user.id);
   if (user.referred_by) return res.status(400).json({ error: 'You have already used a referral code' });
 
-  const referrer = db.prepare('SELECT id FROM users WHERE referral_code = ?').get(referral_code);
+  const referrer = await db.get('SELECT id FROM users WHERE referral_code = $1', referral_code);
   if (!referrer) return res.status(400).json({ error: 'Invalid referral code' });
   if (referrer.id === req.user.id) return res.status(400).json({ error: 'You cannot refer yourself' });
 
   // Credit both users with 5 bonus generations
-  db.prepare('UPDATE users SET referred_by = ?, bonus_generations = bonus_generations + 5 WHERE id = ?').run(referrer.id, req.user.id);
-  db.prepare('UPDATE users SET bonus_generations = bonus_generations + 5 WHERE id = ?').run(referrer.id);
+  await db.run('UPDATE users SET referred_by = $1, bonus_generations = bonus_generations + 5 WHERE id = $2', referrer.id, req.user.id);
+  await db.run('UPDATE users SET bonus_generations = bonus_generations + 5 WHERE id = $1', referrer.id);
 
   res.json({ success: true, message: 'Referral applied! You both earned 5 bonus generations.' });
 });
@@ -177,10 +176,10 @@ app.post('/api/v1/generate', async (req, res) => {
   const apiKey = req.headers['x-api-key'];
   if (!apiKey) return res.status(401).json({ error: 'API key required' });
 
-  const keyRow = db.prepare('SELECT user_id FROM api_keys WHERE key = ?').get(apiKey);
+  const keyRow = await db.get('SELECT user_id FROM api_keys WHERE key = $1', apiKey);
   if (!keyRow) return res.status(401).json({ error: 'Invalid API key' });
 
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(keyRow.user_id);
+  const user = await db.get('SELECT * FROM users WHERE id = $1', keyRow.user_id);
   const totalAvailable = user.generations_limit + (user.bonus_generations || 0);
   if (user.generations_used >= totalAvailable) {
     return res.status(403).json({ error: 'Generation limit reached' });
@@ -189,12 +188,11 @@ app.post('/api/v1/generate', async (req, res) => {
   try {
     const { type, input } = req.body;
     const result = await generateContent(type, input);
-    db.prepare('INSERT INTO generations (user_id, type, prompt, result) VALUES (?, ?, ?, ?)')
-      .run(user.id, type, JSON.stringify(input), result.content);
+    await db.run('INSERT INTO generations (user_id, type, prompt, result) VALUES ($1, $2, $3, $4)', user.id, type, JSON.stringify(input), result.content);
     if (user.bonus_generations > 0) {
-      db.prepare('UPDATE users SET bonus_generations = bonus_generations - 1 WHERE id = ?').run(user.id);
+      await db.run('UPDATE users SET bonus_generations = bonus_generations - 1 WHERE id = $1', user.id);
     } else {
-      db.prepare('UPDATE users SET generations_used = generations_used + 1 WHERE id = ?').run(user.id);
+      await db.run('UPDATE users SET generations_used = generations_used + 1 WHERE id = $1', user.id);
     }
     res.json(result);
   } catch (err) {
@@ -225,43 +223,47 @@ let statsCache = null;
 let statsCacheTime = 0;
 const STATS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-app.get('/api/stats', (req, res) => {
+app.get('/api/stats', async (req, res) => {
   const now = Date.now();
   if (statsCache && (now - statsCacheTime) < STATS_CACHE_TTL) {
     return res.json(statsCache);
   }
 
-  const totalUsers = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
-  const totalGenerations = db.prepare('SELECT COUNT(*) as count FROM generations').get().count;
-  const totalBlogPosts = db.prepare('SELECT COUNT(*) as count FROM blog_posts WHERE published = 1').get().count;
+  const totalUsersRow = await db.get('SELECT COUNT(*) as count FROM users');
+  const totalGenerationsRow = await db.get('SELECT COUNT(*) as count FROM generations');
+  const totalBlogPostsRow = await db.get('SELECT COUNT(*) as count FROM blog_posts WHERE published = 1');
 
-  statsCache = { totalUsers, totalGenerations, totalBlogPosts };
+  statsCache = {
+    totalUsers: totalUsersRow.count,
+    totalGenerations: totalGenerationsRow.count,
+    totalBlogPosts: totalBlogPostsRow.count,
+  };
   statsCacheTime = now;
   res.json(statsCache);
 });
 
 // ===== ADMIN STATS =====
-app.get('/api/admin/stats', authMiddleware, (req, res) => {
+app.get('/api/admin/stats', authMiddleware, async (req, res) => {
   // Simple admin check — first user is admin
   if (req.user.id !== 1) return res.status(403).json({ error: 'Not authorized' });
 
-  const totalUsers = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
-  const paidUsers = db.prepare("SELECT COUNT(*) as count FROM users WHERE plan != 'free'").get().count;
-  const totalGenerations = db.prepare('SELECT COUNT(*) as count FROM generations').get().count;
-  const revenue = db.prepare("SELECT plan, COUNT(*) as count FROM users WHERE plan != 'free' GROUP BY plan").all();
+  const totalUsersRow = await db.get('SELECT COUNT(*) as count FROM users');
+  const paidUsersRow = await db.get("SELECT COUNT(*) as count FROM users WHERE plan != 'free'");
+  const totalGenerationsRow = await db.get('SELECT COUNT(*) as count FROM generations');
+  const revenue = await db.all("SELECT plan, COUNT(*) as count FROM users WHERE plan != 'free' GROUP BY plan");
 
   let mrr = 0;
   for (const r of revenue) {
     mrr += (PLANS[r.plan]?.price || 0) * r.count / 100;
   }
 
-  res.json({ totalUsers, paidUsers, totalGenerations, mrr: mrr.toFixed(2) });
+  res.json({ totalUsers: totalUsersRow.count, paidUsers: paidUsersRow.count, totalGenerations: totalGenerationsRow.count, mrr: mrr.toFixed(2) });
 });
 
 // ===== EMAIL SUBSCRIBER ROUTES =====
 
 // Subscribe — public endpoint for email capture
-app.post('/api/subscribe', (req, res) => {
+app.post('/api/subscribe', async (req, res) => {
   const { email, name } = req.body;
   if (!email) return res.status(400).json({ error: 'Email is required' });
 
@@ -270,20 +272,20 @@ app.post('/api/subscribe', (req, res) => {
   if (!emailRegex.test(email)) return res.status(400).json({ error: 'Invalid email format' });
 
   // Check for duplicate
-  const existing = db.prepare('SELECT id FROM email_subscribers WHERE email = ?').get(email.toLowerCase().trim());
+  const existing = await db.get('SELECT id FROM email_subscribers WHERE email = $1', email.toLowerCase().trim());
   if (existing) return res.json({ ok: true, message: 'You are already subscribed!' });
 
-  db.prepare('INSERT INTO email_subscribers (email, name) VALUES (?, ?)').run(email.toLowerCase().trim(), name || null);
+  await db.run('INSERT INTO email_subscribers (email, name) VALUES ($1, $2)', email.toLowerCase().trim(), name || null);
   res.json({ ok: true, message: 'Successfully subscribed!' });
 });
 
 // List subscribers — admin only (user id 1)
-app.get('/api/subscribers', authMiddleware, (req, res) => {
+app.get('/api/subscribers', authMiddleware, async (req, res) => {
   if (req.user.id !== 1) return res.status(403).json({ error: 'Not authorized' });
 
-  const subscribers = db.prepare(
+  const subscribers = await db.all(
     'SELECT id, email, name, subscribed_at, last_email_sent, emails_sent_count, converted FROM email_subscribers ORDER BY subscribed_at DESC'
-  ).all();
+  );
   res.json({ subscribers, total: subscribers.length });
 });
 
@@ -371,18 +373,19 @@ app.post('/api/marketing/seed-tweets', async (req, res) => {
     `Every small business needs great content. Not every small business can afford a copywriter.\n\nContentAI: $29/mo for unlimited AI content.\n${siteUrl}`,
   ];
   // Reset any failed tweets back to pending
-  const reset = db.prepare("UPDATE marketing_queue SET status = 'pending', error = NULL WHERE platform = 'twitter' AND status = 'failed'").run();
+  const reset = await db.run("UPDATE marketing_queue SET status = 'pending', error = NULL WHERE platform = 'twitter' AND status = 'failed'");
   let seeded = 0;
   for (const tweet of tweets) {
-    const exists = db.prepare("SELECT id FROM marketing_queue WHERE content = ? AND platform = 'twitter'").get(JSON.stringify({ text: tweet }));
+    const exists = await db.get("SELECT id FROM marketing_queue WHERE content = $1 AND platform = 'twitter'", JSON.stringify({ text: tweet }));
     if (!exists) {
-      db.prepare(
-        "INSERT INTO marketing_queue (platform, content_type, content, status) VALUES ('twitter', 'tweet', ?, 'pending')"
-      ).run(JSON.stringify({ text: tweet }));
+      await db.run(
+        "INSERT INTO marketing_queue (platform, content_type, content, status) VALUES ('twitter', 'tweet', $1, 'pending')",
+        JSON.stringify({ text: tweet })
+      );
       seeded++;
     }
   }
-  const pending = db.prepare("SELECT COUNT(*) as count FROM marketing_queue WHERE platform = 'twitter' AND status = 'pending'").get();
+  const pending = await db.get("SELECT COUNT(*) as count FROM marketing_queue WHERE platform = 'twitter' AND status = 'pending'");
   res.json({ success: true, seeded, reset: reset.changes, pending: pending.count, total: tweets.length });
 });
 
@@ -435,22 +438,22 @@ app.post('/api/marketing/generate-submissions', async (req, res) => {
 });
 
 // View marketing queue (admin only via JWT)
-app.get('/api/marketing/queue', authMiddleware, (req, res) => {
+app.get('/api/marketing/queue', authMiddleware, async (req, res) => {
   if (req.user.id !== 1) return res.status(403).json({ error: 'Not authorized' });
 
-  const items = db.prepare(
+  const items = await db.all(
     'SELECT * FROM marketing_queue ORDER BY created_at DESC'
-  ).all();
+  );
   res.json({ items, total: items.length });
 });
 
 // Marketing stats (public)
-app.get('/api/marketing/stats', (req, res) => {
-  const stats = db.prepare(`
+app.get('/api/marketing/stats', async (req, res) => {
+  const stats = await db.all(`
     SELECT platform, status, COUNT(*) as count
     FROM marketing_queue
     GROUP BY platform, status
-  `).all();
+  `);
 
   const summary = {};
   for (const row of stats) {
@@ -458,14 +461,14 @@ app.get('/api/marketing/stats', (req, res) => {
     summary[row.platform][row.status] = row.count;
   }
 
-  const totals = db.prepare(`
+  const totals = await db.get(`
     SELECT
       COUNT(*) as total,
       SUM(CASE WHEN status = 'posted' THEN 1 ELSE 0 END) as posted,
       SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
       SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
     FROM marketing_queue
-  `).get();
+  `);
 
   res.json({ byPlatform: summary, totals });
 });
@@ -490,7 +493,7 @@ app.get('/api/marketing/video-preview', async (req, res) => {
 app.get('/api/marketing/video-preview/:id', async (req, res) => {
   if (!cronOrAdminAuth(req, res)) return;
   try {
-    const video = db.prepare('SELECT * FROM marketing_videos WHERE id = ?').get(req.params.id);
+    const video = await db.get('SELECT * FROM marketing_videos WHERE id = $1', req.params.id);
     if (!video) return res.status(404).json({ error: 'Video not found' });
 
     const script = JSON.parse(video.script);
@@ -504,29 +507,30 @@ app.get('/api/marketing/video-preview/:id', async (req, res) => {
 });
 
 // List all generated videos (admin only)
-app.get('/api/marketing/videos', authMiddleware, (req, res) => {
+app.get('/api/marketing/videos', authMiddleware, async (req, res) => {
   if (req.user.id !== 1) return res.status(403).json({ error: 'Not authorized' });
-  const videos = db.prepare(
+  const videos = await db.all(
     'SELECT id, template, title, status, duration_seconds, created_at FROM marketing_videos ORDER BY created_at DESC'
-  ).all();
+  );
   res.json({ videos, total: videos.length });
 });
 
 // ===== BLOG API ROUTES =====
 
 // List all published blog posts (JSON API)
-app.get('/api/blog', (req, res) => {
-  const posts = db.prepare(
+app.get('/api/blog', async (req, res) => {
+  const posts = await db.all(
     'SELECT id, title, slug, meta_description, keywords, created_at FROM blog_posts WHERE published = 1 ORDER BY created_at DESC'
-  ).all();
+  );
   res.json({ posts });
 });
 
 // Schedule info endpoint (must be before :slug route)
-app.get('/api/blog/schedule-info', (req, res) => {
-  const totalPosts = db.prepare('SELECT COUNT(*) as count FROM blog_posts').get().count;
-  const lastPost = db.prepare('SELECT created_at FROM blog_posts ORDER BY created_at DESC LIMIT 1').get();
-  const usedKeywords = db.prepare('SELECT keywords FROM blog_posts').all().map(r => r.keywords).filter(Boolean);
+app.get('/api/blog/schedule-info', async (req, res) => {
+  const totalPostsRow = await db.get('SELECT COUNT(*) as count FROM blog_posts');
+  const lastPost = await db.get('SELECT created_at FROM blog_posts ORDER BY created_at DESC LIMIT 1');
+  const keywordRows = await db.all('SELECT keywords FROM blog_posts');
+  const usedKeywords = keywordRows.map(r => r.keywords).filter(Boolean);
   const remainingKeywords = SEO_KEYWORDS.filter(kw => !usedKeywords.includes(kw));
 
   // Suggest generating one post per day
@@ -540,7 +544,7 @@ app.get('/api/blog/schedule-info', (req, res) => {
   }
 
   res.json({
-    totalPosts,
+    totalPosts: totalPostsRow.count,
     totalKeywords: SEO_KEYWORDS.length,
     remainingKeywords: remainingKeywords.length,
     lastPostDate: lastPost?.created_at || null,
@@ -551,10 +555,11 @@ app.get('/api/blog/schedule-info', (req, res) => {
 });
 
 // Get single blog post by slug (JSON API)
-app.get('/api/blog/:slug', (req, res) => {
-  const post = db.prepare(
-    'SELECT * FROM blog_posts WHERE slug = ? AND published = 1'
-  ).get(req.params.slug);
+app.get('/api/blog/:slug', async (req, res) => {
+  const post = await db.get(
+    'SELECT * FROM blog_posts WHERE slug = $1 AND published = 1',
+    req.params.slug
+  );
   if (!post) return res.status(404).json({ error: 'Post not found' });
   res.json({ post });
 });
@@ -751,11 +756,11 @@ function stripHtmlForExcerpt(html, maxLen) {
 }
 
 // Blog listing page (server-rendered)
-app.get('/blog', (req, res) => {
+app.get('/blog', async (req, res) => {
   const baseUrl = `${req.protocol}://${req.get('host')}`;
-  const posts = db.prepare(
+  const posts = await db.all(
     'SELECT id, title, slug, content, meta_description, keywords, created_at FROM blog_posts WHERE published = 1 ORDER BY created_at DESC'
-  ).all();
+  );
 
   let cardsHtml;
   if (posts.length === 0) {
@@ -795,11 +800,12 @@ app.get('/blog', (req, res) => {
 });
 
 // Single blog post page (server-rendered)
-app.get('/blog/:slug', (req, res) => {
+app.get('/blog/:slug', async (req, res) => {
   const baseUrl = `${req.protocol}://${req.get('host')}`;
-  const post = db.prepare(
-    'SELECT * FROM blog_posts WHERE slug = ? AND published = 1'
-  ).get(req.params.slug);
+  const post = await db.get(
+    'SELECT * FROM blog_posts WHERE slug = $1 AND published = 1',
+    req.params.slug
+  );
 
   if (!post) {
     const notFoundBody = `
@@ -878,11 +884,11 @@ app.get('/blog/:slug', (req, res) => {
 registerFreeToolRoutes(app);
 
 // ===== SITEMAP =====
-app.get('/sitemap.xml', (req, res) => {
+app.get('/sitemap.xml', async (req, res) => {
   const baseUrl = `${req.protocol}://${req.get('host')}`;
-  const posts = db.prepare(
+  const posts = await db.all(
     'SELECT slug, created_at FROM blog_posts WHERE published = 1 ORDER BY created_at DESC'
-  ).all();
+  );
 
   let xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -944,6 +950,7 @@ app.get('/{*splat}', (req, res) => {
 
 // Start
 async function start() {
+  await db.initTables();
   await ensureStripePrices();
   app.listen(PORT, () => {
     console.log(`ContentAI running at http://localhost:${PORT}`);

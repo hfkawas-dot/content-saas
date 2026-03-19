@@ -74,30 +74,28 @@ Requirements:
 
     // Insert standalone tweets into marketing_queue
     if (tweets && Array.isArray(tweets)) {
-      const insertStmt = db.prepare(
-        'INSERT INTO marketing_queue (platform, content_type, content, blog_post_id, status) VALUES (?, ?, ?, ?, ?)'
-      );
       for (const tweet of tweets) {
-        insertStmt.run('twitter', 'tweet', JSON.stringify({ text: tweet }), id, 'pending');
+        await db.run(
+          'INSERT INTO marketing_queue (platform, content_type, content, blog_post_id, status) VALUES ($1, $2, $3, $4, $5)',
+          'twitter', 'tweet', JSON.stringify({ text: tweet }), id, 'pending'
+        );
       }
     }
 
     // Insert thread tweets into marketing_queue with parent_id linking
     if (thread && Array.isArray(thread) && thread.length > 0) {
-      const insertStmt = db.prepare(
-        'INSERT INTO marketing_queue (platform, content_type, content, blog_post_id, status, parent_id) VALUES (?, ?, ?, ?, ?, ?)'
+      // Insert first tweet of thread, get its ID
+      const firstResult = await db.run(
+        'INSERT INTO marketing_queue (platform, content_type, content, blog_post_id, status) VALUES ($1, $2, $3, $4, $5)',
+        'twitter', 'thread', JSON.stringify({ text: thread[0], position: 1 }), id, 'pending'
       );
 
-      // Insert first tweet of thread, get its ID
-      const firstResult = db.prepare(
-        'INSERT INTO marketing_queue (platform, content_type, content, blog_post_id, status) VALUES (?, ?, ?, ?, ?)'
-      ).run('twitter', 'thread', JSON.stringify({ text: thread[0], position: 1 }), id, 'pending');
-
-      const parentId = firstResult.lastInsertRowid;
+      const parentId = firstResult.lastID;
 
       // Insert remaining thread tweets linked to the first
       for (let i = 1; i < thread.length; i++) {
-        insertStmt.run(
+        await db.run(
+          'INSERT INTO marketing_queue (platform, content_type, content, blog_post_id, status, parent_id) VALUES ($1, $2, $3, $4, $5, $6)',
           'twitter', 'thread',
           JSON.stringify({ text: thread[i], position: i + 1 }),
           id, 'pending', parentId
@@ -107,9 +105,10 @@ Requirements:
 
     // Insert Pinterest pin into marketing_queue
     if (pinterest_description) {
-      db.prepare(
-        'INSERT INTO marketing_queue (platform, content_type, content, blog_post_id, status) VALUES (?, ?, ?, ?, ?)'
-      ).run('pinterest', 'pin', JSON.stringify({ title, description: pinterest_description }), id, 'pending');
+      await db.run(
+        'INSERT INTO marketing_queue (platform, content_type, content, blog_post_id, status) VALUES ($1, $2, $3, $4, $5)',
+        'pinterest', 'pin', JSON.stringify({ title, description: pinterest_description }), id, 'pending'
+      );
     }
 
     console.log(`[content-repurposer] Repurposed blog post "${title}" (id=${id}) into marketing content`);

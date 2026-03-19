@@ -136,9 +136,10 @@ async function sendDripEmails() {
   }
 
   const baseUrl = process.env.BASE_URL || 'http://localhost:' + (process.env.PORT || 3001);
-  const subscribers = db.prepare(
-    'SELECT * FROM email_subscribers WHERE converted = 0 AND emails_sent_count < ?'
-  ).all(DRIP_EMAILS.length);
+  const subscribers = await db.all(
+    'SELECT * FROM email_subscribers WHERE converted = 0 AND emails_sent_count < $1',
+    DRIP_EMAILS.length
+  );
 
   let sent = 0;
   let skipped = 0;
@@ -174,9 +175,10 @@ async function sendDripEmails() {
       const htmlContent = dripEmail.html(sub.name, baseUrl);
       await sendEmail(transporter, sub.email, dripEmail.subject, htmlContent);
 
-      db.prepare(
-        'UPDATE email_subscribers SET last_email_sent = CURRENT_TIMESTAMP, emails_sent_count = emails_sent_count + 1 WHERE id = ?'
-      ).run(sub.id);
+      await db.run(
+        'UPDATE email_subscribers SET last_email_sent = CURRENT_TIMESTAMP, emails_sent_count = emails_sent_count + 1 WHERE id = $1',
+        sub.id
+      );
 
       sent++;
       console.log(`Drip email ${nextEmailIndex + 1} sent to ${sub.email}`);

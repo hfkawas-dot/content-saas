@@ -36,16 +36,15 @@ const VIDEO_TEMPLATES = [
 /**
  * Pick a template that hasn't been used recently
  */
-function pickTemplate(db) {
-  const recentTemplates = db
-    .prepare(
-      'SELECT template FROM marketing_videos ORDER BY created_at DESC LIMIT ?'
-    )
-    .all(VIDEO_TEMPLATES.length - 1)
-    .map((r) => r.template);
+async function pickTemplate(db) {
+  const recentTemplates = await db.all(
+    'SELECT template FROM marketing_videos ORDER BY created_at DESC LIMIT $1',
+    VIDEO_TEMPLATES.length - 1
+  );
+  const recentIds = recentTemplates.map((r) => r.template);
 
   const available = VIDEO_TEMPLATES.filter(
-    (t) => !recentTemplates.includes(t.id)
+    (t) => !recentIds.includes(t.id)
   );
   if (available.length === 0) return VIDEO_TEMPLATES[Math.floor(Math.random() * VIDEO_TEMPLATES.length)];
   return available[Math.floor(Math.random() * available.length)];
@@ -55,7 +54,7 @@ function pickTemplate(db) {
  * Generate a video script using the Anthropic API
  */
 async function generateVideoContent(db) {
-  const template = pickTemplate(db);
+  const template = await pickTemplate(db);
 
   const message = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
@@ -109,13 +108,12 @@ Return ONLY valid JSON (no markdown, no backticks) with this exact structure:
   script.demoInput = template.demoInput;
 
   // Save to DB
-  const result = db
-    .prepare(
-      'INSERT INTO marketing_videos (template, title, script, duration_seconds, status) VALUES (?, ?, ?, ?, ?)'
-    )
-    .run(template.id, template.title, JSON.stringify(script), 30, 'ready');
+  const result = await db.run(
+    'INSERT INTO marketing_videos (template, title, script, duration_seconds, status) VALUES ($1, $2, $3, $4, $5)',
+    template.id, template.title, JSON.stringify(script), 30, 'ready'
+  );
 
-  return { id: result.lastInsertRowid, script };
+  return { id: result.lastID, script };
 }
 
 /**

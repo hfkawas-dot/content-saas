@@ -46,13 +46,13 @@ async function createCheckoutSession(userId, planKey) {
   const plan = PLANS[planKey];
   if (!plan || !plan.priceId) throw new Error('Invalid plan');
 
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+  const user = await db.get('SELECT * FROM users WHERE id = $1', userId);
 
   let customerId = user.stripe_customer_id;
   if (!customerId) {
     const customer = await s.customers.create({ email: user.email, metadata: { userId: String(userId) } });
     customerId = customer.id;
-    db.prepare('UPDATE users SET stripe_customer_id = ? WHERE id = ?').run(customerId, userId);
+    await db.run('UPDATE users SET stripe_customer_id = $1 WHERE id = $2', customerId, userId);
   }
 
   const session = await s.checkout.sessions.create({
@@ -68,7 +68,7 @@ async function createCheckoutSession(userId, planKey) {
   return session;
 }
 
-function handleWebhook(event) {
+async function handleWebhook(event) {
   switch (event.type) {
     case 'checkout.session.completed': {
       const session = event.data.object;
@@ -76,15 +76,15 @@ function handleWebhook(event) {
       const planKey = session.metadata?.plan;
       if (userId && planKey) {
         const plan = PLANS[planKey];
-        db.prepare('UPDATE users SET plan = ?, generations_limit = ?, stripe_subscription_id = ? WHERE id = ?')
-          .run(planKey, plan.generations, session.subscription, parseInt(userId));
+        await db.run('UPDATE users SET plan = $1, generations_limit = $2, stripe_subscription_id = $3 WHERE id = $4',
+          planKey, plan.generations, session.subscription, parseInt(userId));
       }
       break;
     }
     case 'customer.subscription.deleted': {
       const sub = event.data.object;
-      db.prepare('UPDATE users SET plan = ?, generations_limit = ?, stripe_subscription_id = NULL WHERE stripe_subscription_id = ?')
-        .run('free', PLANS.free.generations, sub.id);
+      await db.run('UPDATE users SET plan = $1, generations_limit = $2, stripe_subscription_id = NULL WHERE stripe_subscription_id = $3',
+        'free', PLANS.free.generations, sub.id);
       break;
     }
     case 'invoice.payment_failed': {

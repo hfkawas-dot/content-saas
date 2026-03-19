@@ -3,9 +3,9 @@ const db = require('./db');
 const PINTEREST_ACCESS_TOKEN = process.env.PINTEREST_ACCESS_TOKEN;
 const PINTEREST_BOARD_ID = process.env.PINTEREST_BOARD_ID;
 
-function getBlogPostUrl(blogPostId) {
+async function getBlogPostUrl(blogPostId) {
   if (!blogPostId) return null;
-  const post = db.prepare('SELECT slug FROM blog_posts WHERE id = ?').get(blogPostId);
+  const post = await db.get('SELECT slug FROM blog_posts WHERE id = $1', blogPostId);
   if (!post) return null;
   const baseUrl = process.env.BASE_URL || 'http://localhost:' + (process.env.PORT || 3001);
   return `${baseUrl}/blog/${post.slug}`;
@@ -42,9 +42,9 @@ async function postNextPin() {
     return { posted: false, message: 'Pinterest not configured' };
   }
 
-  const item = db.prepare(
+  const item = await db.get(
     "SELECT * FROM marketing_queue WHERE platform = 'pinterest' AND status = 'pending' ORDER BY id ASC LIMIT 1"
-  ).get();
+  );
 
   if (!item) {
     return { posted: false, message: 'No pending pins' };
@@ -63,7 +63,7 @@ async function postNextPin() {
     const imageUrl = parsed.image_url || null;
 
     // Get the blog post link
-    const blogUrl = getBlogPostUrl(item.blog_post_id);
+    const blogUrl = await getBlogPostUrl(item.blog_post_id);
 
     const pinBody = {
       board_id: PINTEREST_BOARD_ID,
@@ -86,15 +86,17 @@ async function postNextPin() {
 
     const pin = await pinterestApiRequest('/pins', 'POST', pinBody);
 
-    db.prepare(
-      "UPDATE marketing_queue SET status = 'posted', posted_at = CURRENT_TIMESTAMP, external_id = ? WHERE id = ?"
-    ).run(pin.id, item.id);
+    await db.run(
+      "UPDATE marketing_queue SET status = 'posted', posted_at = CURRENT_TIMESTAMP, external_id = $1 WHERE id = $2",
+      pin.id, item.id
+    );
 
     return { posted: true, pinId: pin.id, title };
   } catch (err) {
-    db.prepare(
-      "UPDATE marketing_queue SET status = 'failed', error = ? WHERE id = ?"
-    ).run(err.message, item.id);
+    await db.run(
+      "UPDATE marketing_queue SET status = 'failed', error = $1 WHERE id = $2",
+      err.message, item.id
+    );
 
     return { posted: false, error: err.message };
   }

@@ -99,13 +99,13 @@ function slugify(text) {
     .substring(0, 120);
 }
 
-function getUsedKeywords() {
-  const rows = db.prepare('SELECT keywords FROM blog_posts').all();
+async function getUsedKeywords() {
+  const rows = await db.all('SELECT keywords FROM blog_posts');
   return rows.map(r => r.keywords).filter(Boolean);
 }
 
-function pickUnusedKeyword() {
-  const used = getUsedKeywords();
+async function pickUnusedKeyword() {
+  const used = await getUsedKeywords();
   const unused = SEO_KEYWORDS.filter(kw => !used.includes(kw));
   if (unused.length === 0) {
     // All keywords used; pick a random one to reuse
@@ -116,7 +116,7 @@ function pickUnusedKeyword() {
 
 async function generateBlogPost(keyword) {
   if (!keyword) {
-    keyword = pickUnusedKeyword();
+    keyword = await pickUnusedKeyword();
   }
 
   const systemPrompt = `You are an expert SEO content writer and digital marketing specialist. You write in-depth, helpful, well-structured blog posts that rank well on Google and provide genuine value to readers. Your articles are informative, actionable, and well-organized with clear headings and subheadings.
@@ -174,15 +174,16 @@ Return your response in EXACTLY this JSON format (no markdown code fences, just 
   const slug = slugify(title);
 
   // Check for duplicate slug
-  const existing = db.prepare('SELECT id FROM blog_posts WHERE slug = ?').get(slug);
+  const existing = await db.get('SELECT id FROM blog_posts WHERE slug = $1', slug);
   const finalSlug = existing ? `${slug}-${Date.now()}` : slug;
 
-  const result = db.prepare(
-    'INSERT INTO blog_posts (title, slug, content, meta_description, keywords, published) VALUES (?, ?, ?, ?, ?, 1)'
-  ).run(title, finalSlug, content, meta_description, keyword);
+  const result = await db.run(
+    'INSERT INTO blog_posts (title, slug, content, meta_description, keywords, published) VALUES ($1, $2, $3, $4, $5, 1)',
+    title, finalSlug, content, meta_description, keyword
+  );
 
   const postData = {
-    id: result.lastInsertRowid,
+    id: result.lastID,
     title,
     slug: finalSlug,
     content,
