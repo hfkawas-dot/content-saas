@@ -370,6 +370,8 @@ app.post('/api/marketing/seed-tweets', async (req, res) => {
     `Still writing your own product descriptions? There's a faster way.\n\nContentAI uses AI to generate SEO-optimized descriptions instantly.\n\n${siteUrl}`,
     `Every small business needs great content. Not every small business can afford a copywriter.\n\nContentAI: $29/mo for unlimited AI content.\n${siteUrl}`,
   ];
+  // Reset any failed tweets back to pending
+  const reset = db.prepare("UPDATE marketing_queue SET status = 'pending', error = NULL WHERE platform = 'twitter' AND status = 'failed'").run();
   let seeded = 0;
   for (const tweet of tweets) {
     const exists = db.prepare("SELECT id FROM marketing_queue WHERE content = ? AND platform = 'twitter'").get(JSON.stringify({ text: tweet }));
@@ -380,7 +382,8 @@ app.post('/api/marketing/seed-tweets', async (req, res) => {
       seeded++;
     }
   }
-  res.json({ success: true, seeded, total: tweets.length });
+  const pending = db.prepare("SELECT COUNT(*) as count FROM marketing_queue WHERE platform = 'twitter' AND status = 'pending'").get();
+  res.json({ success: true, seeded, reset: reset.changes, pending: pending.count, total: tweets.length });
 });
 
 // Post next pending tweet
