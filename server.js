@@ -354,6 +354,35 @@ function cronOrAdminAuth(req, res) {
   }
 }
 
+// Seed marketing queue with promotional tweets (no blog post needed)
+app.post('/api/marketing/seed-tweets', async (req, res) => {
+  if (!cronOrAdminAuth(req, res)) return;
+  const siteUrl = process.env.BASE_URL || 'https://contentai-o1s4.onrender.com';
+  const tweets = [
+    `Stop staring at a blank page. ContentAI writes your product descriptions, emails, and ad copy in seconds. Try 5 free generations:\n${siteUrl}`,
+    `Small business owners: how much time do you spend writing content each week? What if AI could do it in seconds?\n\nTry ContentAI free: ${siteUrl}`,
+    `Writing product descriptions is tedious. Let AI handle it.\n\nContentAI generates professional copy for your business in seconds.\n\n${siteUrl}`,
+    `Need marketing emails that actually convert? ContentAI writes high-converting email campaigns using proven frameworks.\n\nTry free: ${siteUrl}`,
+    `Etsy sellers, Amazon sellers, Shopify owners — stop spending hours on product descriptions.\n\nContentAI does it in seconds: ${siteUrl}`,
+    `Your ad copy shouldn't sound like everyone else's. ContentAI creates unique, compelling ads for Facebook, Google & Instagram.\n\n${siteUrl}`,
+    `Social media posts taking too long? ContentAI generates scroll-stopping posts for any platform.\n\nTry 5 free: ${siteUrl}`,
+    `The secret to great marketing? Great copy. Let AI write yours.\n\nContentAI — professional content in seconds: ${siteUrl}`,
+    `Still writing your own product descriptions? There's a faster way.\n\nContentAI uses AI to generate SEO-optimized descriptions instantly.\n\n${siteUrl}`,
+    `Every small business needs great content. Not every small business can afford a copywriter.\n\nContentAI: $29/mo for unlimited AI content.\n${siteUrl}`,
+  ];
+  let seeded = 0;
+  for (const tweet of tweets) {
+    const exists = db.prepare("SELECT id FROM marketing_queue WHERE content = ? AND platform = 'twitter'").get(JSON.stringify({ text: tweet }));
+    if (!exists) {
+      db.prepare(
+        "INSERT INTO marketing_queue (platform, content_type, content, status) VALUES ('twitter', 'tweet', ?, 'pending')"
+      ).run(JSON.stringify({ text: tweet }));
+      seeded++;
+    }
+  }
+  res.json({ success: true, seeded, total: tweets.length });
+});
+
 // Post next pending tweet
 app.post('/api/marketing/post-tweet', async (req, res) => {
   if (!cronOrAdminAuth(req, res)) return;
