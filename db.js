@@ -63,6 +63,32 @@ db.exec(`
     emails_sent_count INTEGER DEFAULT 0,
     converted INTEGER DEFAULT 0
   );
+
+  CREATE TABLE IF NOT EXISTS marketing_queue (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    platform TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    content TEXT NOT NULL,
+    blog_post_id INTEGER,
+    status TEXT DEFAULT 'pending',
+    parent_id INTEGER,
+    scheduled_for DATETIME,
+    posted_at DATETIME,
+    external_id TEXT,
+    error TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS marketing_videos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    template TEXT NOT NULL,
+    title TEXT NOT NULL,
+    script TEXT,
+    filename TEXT,
+    duration_seconds INTEGER,
+    status TEXT DEFAULT 'pending',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 // Migration: add referral columns if they don't exist (for existing databases)

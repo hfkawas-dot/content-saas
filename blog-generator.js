@@ -1,5 +1,6 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const db = require('./db');
+const { repurposeBlogPost } = require('./content-repurposer');
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -180,8 +181,26 @@ Return your response in EXACTLY this JSON format (no markdown code fences, just 
     'INSERT INTO blog_posts (title, slug, content, meta_description, keywords, published) VALUES (?, ?, ?, ?, ?, 1)'
   ).run(title, finalSlug, content, meta_description, keyword);
 
-  return {
+  const postData = {
     id: result.lastInsertRowid,
+    title,
+    slug: finalSlug,
+    content,
+    meta_description,
+    keywords: keyword,
+  };
+
+  // Fire-and-forget: repurpose blog post into marketing content
+  try {
+    repurposeBlogPost(postData).catch(err => {
+      console.error('[blog-generator] Repurposing failed:', err.message);
+    });
+  } catch (err) {
+    console.error('[blog-generator] Error starting repurposing:', err.message);
+  }
+
+  return {
+    id: postData.id,
     title,
     slug: finalSlug,
     meta_description,

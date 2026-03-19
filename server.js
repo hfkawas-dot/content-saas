@@ -14,6 +14,10 @@ const { PLANS, ensureStripePrices, createCheckoutSession, handleWebhook, getStri
 const { generateBlogPost, pickUnusedKeyword, SEO_KEYWORDS } = require('./blog-generator');
 const { sendDripEmails } = require('./email-drip');
 const { registerFreeToolRoutes, FREE_TOOLS } = require('./free-tools');
+const { postNextTweet, postNextThread } = require('./twitter-poster');
+const { postNextPin } = require('./pinterest-poster');
+const { generateSubmissions } = require('./directory-submitter');
+const { generateVideoContent, renderVideoPage } = require('./video-generator');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -314,6 +318,166 @@ app.post('/api/email/send-drip', async (req, res) => {
     console.error('Drip email error:', err);
     res.status(500).json({ error: 'Failed to send drip emails: ' + err.message });
   }
+});
+
+// ===== MARKETING ROUTES =====
+
+// Helper: authenticate via cron secret or admin JWT (reusable for marketing routes)
+function cronOrAdminAuth(req, res) {
+  const cronSecret = process.env.BLOG_CRON_SECRET;
+  const providedSecret = req.headers['x-cron-secret'] || req.body.secret;
+
+  if (cronSecret && providedSecret === cronSecret) {
+    return true; // Authorized via cron secret
+  }
+
+  // Fall back to admin JWT check
+  const authHeader = req.headers.authorization;
+  const cookieToken = req.cookies?.token;
+  if (!authHeader && !cookieToken) {
+    res.status(401).json({ error: 'Unauthorized. Provide x-cron-secret header or admin auth.' });
+    return false;
+  }
+
+  try {
+    const jwt = require('jsonwebtoken');
+    const token = authHeader?.replace('Bearer ', '') || cookieToken;
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
+    if (decoded.id !== 1) {
+      res.status(403).json({ error: 'Admin only' });
+      return false;
+    }
+    return true;
+  } catch {
+    res.status(401).json({ error: 'Invalid token' });
+    return false;
+  }
+}
+
+// Post next pending tweet
+app.post('/api/marketing/post-tweet', async (req, res) => {
+  if (!cronOrAdminAuth(req, res)) return;
+  try {
+    const result = await postNextTweet();
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('Tweet post error:', err);
+    res.status(500).json({ error: 'Failed to post tweet: ' + err.message });
+  }
+});
+
+// Post next pending thread
+app.post('/api/marketing/post-thread', async (req, res) => {
+  if (!cronOrAdminAuth(req, res)) return;
+  try {
+    const result = await postNextThread();
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('Thread post error:', err);
+    res.status(500).json({ error: 'Failed to post thread: ' + err.message });
+  }
+});
+
+// Post next pending pin
+app.post('/api/marketing/post-pin', async (req, res) => {
+  if (!cronOrAdminAuth(req, res)) return;
+  try {
+    const result = await postNextPin();
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('Pin post error:', err);
+    res.status(500).json({ error: 'Failed to post pin: ' + err.message });
+  }
+});
+
+// Generate directory submissions
+app.post('/api/marketing/generate-submissions', async (req, res) => {
+  if (!cronOrAdminAuth(req, res)) return;
+  try {
+    const result = await generateSubmissions();
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('Directory submission error:', err);
+    res.status(500).json({ error: 'Failed to generate submissions: ' + err.message });
+  }
+});
+
+// View marketing queue (admin only via JWT)
+app.get('/api/marketing/queue', authMiddleware, (req, res) => {
+  if (req.user.id !== 1) return res.status(403).json({ error: 'Not authorized' });
+
+  const items = db.prepare(
+    'SELECT * FROM marketing_queue ORDER BY created_at DESC'
+  ).all();
+  res.json({ items, total: items.length });
+});
+
+// Marketing stats (public)
+app.get('/api/marketing/stats', (req, res) => {
+  const stats = db.prepare(`
+    SELECT platform, status, COUNT(*) as count
+    FROM marketing_queue
+    GROUP BY platform, status
+  `).all();
+
+  const summary = {};
+  for (const row of stats) {
+    if (!summary[row.platform]) summary[row.platform] = {};
+    summary[row.platform][row.status] = row.count;
+  }
+
+  const totals = db.prepare(`
+    SELECT
+      COUNT(*) as total,
+      SUM(CASE WHEN status = 'posted' THEN 1 ELSE 0 END) as posted,
+      SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+      SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
+    FROM marketing_queue
+  `).get();
+
+  res.json({ byPlatform: summary, totals });
+});
+
+// ===== VIDEO PREVIEW ROUTES =====
+
+// Generate a new video script and return the HTML presentation page
+app.get('/api/marketing/video-preview', async (req, res) => {
+  if (!cronOrAdminAuth(req, res)) return;
+  try {
+    const { id, script } = await generateVideoContent(db);
+    const html = renderVideoPage(script);
+    res.set('Content-Type', 'text/html');
+    res.send(html);
+  } catch (err) {
+    console.error('Video generation error:', err);
+    res.status(500).json({ error: 'Failed to generate video: ' + err.message });
+  }
+});
+
+// Return a previously generated video page by ID
+app.get('/api/marketing/video-preview/:id', async (req, res) => {
+  if (!cronOrAdminAuth(req, res)) return;
+  try {
+    const video = db.prepare('SELECT * FROM marketing_videos WHERE id = ?').get(req.params.id);
+    if (!video) return res.status(404).json({ error: 'Video not found' });
+
+    const script = JSON.parse(video.script);
+    const html = renderVideoPage(script);
+    res.set('Content-Type', 'text/html');
+    res.send(html);
+  } catch (err) {
+    console.error('Video preview error:', err);
+    res.status(500).json({ error: 'Failed to load video: ' + err.message });
+  }
+});
+
+// List all generated videos (admin only)
+app.get('/api/marketing/videos', authMiddleware, (req, res) => {
+  if (req.user.id !== 1) return res.status(403).json({ error: 'Not authorized' });
+  const videos = db.prepare(
+    'SELECT id, template, title, status, duration_seconds, created_at FROM marketing_videos ORDER BY created_at DESC'
+  ).all();
+  res.json({ videos, total: videos.length });
 });
 
 // ===== BLOG API ROUTES =====
