@@ -598,13 +598,13 @@ app.post('/api/blog/auto-generate', async (req, res) => {
     }
   }
 
-  try {
-    const result = await generateBlogPost();
-    res.json({ success: true, post: result });
-  } catch (err) {
-    console.error('Auto blog generation error:', err);
-    res.status(500).json({ error: 'Failed to generate blog post: ' + err.message });
-  }
+  // Respond immediately so cron services don't timeout
+  res.json({ success: true, message: 'Blog generation started in background' });
+
+  // Run generation in background
+  generateBlogPost()
+    .then(result => console.log('Blog post generated:', result?.title || 'done'))
+    .catch(err => console.error('Auto blog generation error:', err));
 });
 
 // ===== BLOG SERVER-RENDERED PAGES =====
